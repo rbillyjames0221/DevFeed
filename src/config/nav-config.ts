@@ -12,6 +12,27 @@ export const navGroups: NavGroup[] = [
         shortcut: ['d', 'd'],
         items: []
       },
+      {
+        title: 'Inbox',
+        url: '/inbox',
+        icon: 'notification',
+        isActive: false,
+        items: []
+      },
+      {
+        title: 'Portfolio',
+        url: '/org/default/overview',
+        icon: 'trendingUp',
+        isActive: false,
+        items: []
+      },
+      {
+        title: 'Teams',
+        url: '/teams',
+        icon: 'teams',
+        isActive: false,
+        items: []
+      },
       // ERD lives as a tab inside Database now, so it has no nav entry of its own.
       ...DEVFEED_SECTIONS.filter((section) => !['docs', 'erd'].includes(section.slug)).map(
         (section) => ({

@@ -3,6 +3,7 @@ import type { DevopsSettings } from '@/features/project-settings/schema';
 import { ProjectAccessError } from '@/features/projects/service';
 import { recordAudit } from '@/lib/audit/record';
 import { getPrisma } from '@/lib/db/prisma';
+import { requirePermission } from '@/lib/permissions';
 
 /** The caller's role in the project; throws when they aren't a member. */
 export async function requireProjectRole(userId: string, projectId: string): Promise<ProjectRole> {
@@ -15,8 +16,10 @@ export async function requireProjectRole(userId: string, projectId: string): Pro
 }
 
 async function requireOwner(userId: string, projectId: string) {
-  if ((await requireProjectRole(userId, projectId)) !== ProjectRole.OWNER) {
-    throw new ProjectAccessError('Owners only');
+  try {
+    await requirePermission(userId, projectId, 'project.settings');
+  } catch {
+    throw new ProjectAccessError('Project managers and owners only');
   }
 }
 
@@ -182,8 +185,14 @@ export async function getTerminalPolicy(userId: string, projectId: string) {
     where: { id: projectId },
     select: { terminalAccess: true, sshAllowedHosts: true }
   });
+  const isViewer = role === ProjectRole.VIEWER;
+  const isElevated =
+    role === ProjectRole.OWNER ||
+    role === ProjectRole.PROJECT_MANAGER ||
+    role === ProjectRole.LEAD;
   const allowed =
-    project.terminalAccess === TerminalAccess.MEMBERS ||
-    (project.terminalAccess === TerminalAccess.OWNERS && role === ProjectRole.OWNER);
+    !isViewer &&
+    (project.terminalAccess === TerminalAccess.MEMBERS ||
+      (project.terminalAccess === TerminalAccess.OWNERS && isElevated));
   return { ...project, role, allowed };
 }

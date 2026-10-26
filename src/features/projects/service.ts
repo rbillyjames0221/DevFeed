@@ -4,6 +4,7 @@ import { getPrisma } from '@/lib/db/prisma';
 import { toProjectSlug, withSlugSuffix } from '@/lib/projects/slug';
 import { toIssuePrefix, withPrefixSuffix } from '@/lib/issues/keys';
 import type { ParsedProjectInput } from '@/features/projects/schema';
+import { requirePermission } from '@/lib/permissions';
 
 export async function listProjectsForUser(userId: string) {
   const projects = await getPrisma().project.findMany({
@@ -85,12 +86,11 @@ export class ProjectAccessError extends Error {
 }
 
 async function requireProjectOwner(userId: string, projectId: string) {
-  const membership = await getPrisma().projectMember.findFirst({
-    where: { projectId, userId },
-    select: { role: true }
-  });
-  if (!membership) throw new ProjectAccessError();
-  if (membership.role !== ProjectRole.OWNER) throw new ProjectAccessError('Owners only');
+  try {
+    await requirePermission(userId, projectId, 'project.settings');
+  } catch {
+    throw new ProjectAccessError('Project managers and owners only');
+  }
 }
 
 export async function updateProjectForUser(
@@ -98,7 +98,7 @@ export async function updateProjectForUser(
   projectId: string,
   input: ParsedProjectInput
 ) {
-  await requireProjectOwner(userId, projectId);
+  await requirePermission(userId, projectId, 'project.settings');
   return getPrisma().project.update({
     where: { id: projectId },
     data: { name: input.name, description: input.description }
@@ -106,7 +106,7 @@ export async function updateProjectForUser(
 }
 
 export async function deleteProjectForUser(userId: string, projectId: string) {
-  await requireProjectOwner(userId, projectId);
+  await requirePermission(userId, projectId, 'project.delete');
   const project = await getPrisma().project.delete({ where: { id: projectId } });
   return project;
 }
@@ -132,7 +132,7 @@ export async function addProjectMemberByUsername(
 ) {
   // Every demo account is called "demo": adding one would pull in another visitor.
   if (isDemoMode()) throw new ProjectAccessError(DEMO_DISABLED_MESSAGE);
-  await requireProjectOwner(userId, projectId);
+  await requirePermission(userId, projectId, 'members.manage');
   const target = await getPrisma().user.findFirst({
     where: { username: { equals: username.trim(), mode: 'insensitive' } },
     select: { id: true }
@@ -152,7 +152,7 @@ export async function updateProjectMemberRole(
   memberUserId: string,
   role: ProjectRole
 ) {
-  await requireProjectOwner(userId, projectId);
+  await requirePermission(userId, projectId, 'members.manage');
   if (memberUserId === userId) throw new ProjectAccessError('You cannot change your own role');
   return getPrisma().projectMember.update({
     where: { projectId_userId: { projectId, userId: memberUserId } },
@@ -161,7 +161,7 @@ export async function updateProjectMemberRole(
 }
 
 export async function removeProjectMember(userId: string, projectId: string, memberUserId: string) {
-  await requireProjectOwner(userId, projectId);
+  await requirePermission(userId, projectId, 'members.manage');
   if (memberUserId === userId) throw new ProjectAccessError('Transfer ownership first');
   await getPrisma().projectMember.delete({
     where: { projectId_userId: { projectId, userId: memberUserId } }

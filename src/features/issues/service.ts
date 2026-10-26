@@ -1,7 +1,9 @@
-import { GitProvider, IssueFieldKind, IssueLinkType, Prisma } from '@/generated/prisma/client';
+import { GitProvider, IssueFieldKind, IssueLinkType, NotificationKind, Prisma } from '@/generated/prisma/client';
 import { getPrisma } from '@/lib/db/prisma';
 import { createRepositoryBranch, openRepository } from '@/features/git/service';
 import { formatIssueKey, issueKeysForPrefix } from '@/lib/issues/keys';
+import { hasPermission, requirePermission } from '@/lib/permissions';
+import { createNotification, notifyMentionedUsers } from '@/features/notifications/service';
 
 export class IssueAccessError extends Error {
   constructor(message = 'Issue not found') {
@@ -217,7 +219,7 @@ export async function renameBoardColumn(
 
 /**
  * Removes a workflow stage. Cards in it fall back to the reserved BACKLOG
- * status — same as if they had not joined a board column yet.
+ * status â€” same as if they had not joined a board column yet.
  */
 export async function deleteBoardColumn(userId: string, boardId: string, id: string) {
   const column = await requireBoardColumn(userId, boardId, id);
@@ -311,6 +313,10 @@ export interface CreateIssueInput {
   type: string;
   status: string;
   priority: string;
+  estimate?: number | null;
+  teamId?: string | null;
+  parentId?: string | null;
+  labels?: string[];
   assigneeId?: string | null;
   sprintId?: string | null;
   /** Optional due date; null clears it. */
@@ -425,7 +431,7 @@ export async function renameIssueFieldOption(
 
 /**
  * Removes a type/priority option. Refused while any issue still uses it, or
- * if it is the last option left for that kind — an issue always needs one.
+ * if it is the last option left for that kind â€” an issue always needs one.
  */
 export async function deleteIssueFieldOption(
   userId: string,
@@ -474,6 +480,9 @@ export async function createIssue(userId: string, projectId: string, input: Crea
       select: { issuePrefix: true, issueCounter: true }
     });
 
+    const isDone = /^(done|closed|complete|completed|resolved|shipped|released)$/i.test(input.status);
+    const isStarted = input.status !== 'BACKLOG';
+
     return transaction.issue.create({
       data: {
         projectId,
@@ -485,9 +494,15 @@ export async function createIssue(userId: string, projectId: string, input: Crea
         type: input.type,
         status: input.status,
         priority: input.priority,
+        estimate: input.estimate ?? null,
+        teamId: input.teamId ?? null,
+        parentId: input.parentId ?? null,
+        labels: input.labels ?? [],
         assigneeId: input.assigneeId ?? null,
         sprintId: input.sprintId ?? null,
         targetDate: input.targetDate ?? null,
+        startedAt: isStarted ? new Date() : null,
+        completedAt: isDone ? new Date() : null,
         createdById: userId,
         events: { create: { actorId: userId, type: 'CREATED', toValue: input.status } }
       }
@@ -585,11 +600,13 @@ async function describeChanges(
     priority: string;
     assigneeId: string | null;
     targetDate: Date | null;
+    estimate?: number | null;
+    sprintId?: string | null;
   },
   data: Partial<CreateIssueInput>
 ) {
   const events: {
-    type: 'STATUS' | 'ASSIGNEE' | 'PRIORITY' | 'TARGET_DATE';
+    type: 'STATUS' | 'ASSIGNEE' | 'PRIORITY' | 'TARGET_DATE' | 'ESTIMATE' | 'SPRINT' | 'REOPENED';
     fromValue: string | null;
     toValue: string | null;
   }[] = [];
@@ -599,6 +616,20 @@ async function describeChanges(
   }
   if (data.priority !== undefined && data.priority !== before.priority) {
     events.push({ type: 'PRIORITY', fromValue: before.priority, toValue: data.priority });
+  }
+  if (data.estimate !== undefined && data.estimate !== before.estimate) {
+    events.push({
+      type: 'ESTIMATE',
+      fromValue: before.estimate !== null ? String(before.estimate) : null,
+      toValue: data.estimate !== null && data.estimate !== undefined ? String(data.estimate) : null
+    });
+  }
+  if (data.sprintId !== undefined && (data.sprintId ?? null) !== before.sprintId) {
+    events.push({
+      type: 'SPRINT',
+      fromValue: before.sprintId ?? null,
+      toValue: data.sprintId ?? null
+    });
   }
   if (data.assigneeId !== undefined && (data.assigneeId ?? null) !== before.assigneeId) {
     // Usernames, so the log still reads right if someone later leaves the project.
@@ -645,6 +676,37 @@ export async function updateIssue(
 ) {
   const before = await requireIssue(userId, issueId);
   const events = await describeChanges(before, data);
+
+  const isNowDone =
+    data.status &&
+    /^(done|closed|complete|completed|resolved|shipped|released)$/i.test(data.status);
+  const wasDone = /^(done|closed|complete|completed|resolved|shipped|released)$/i.test(before.status);
+
+  let completedAt = before.completedAt;
+  if (isNowDone && !wasDone) {
+    const project = await getPrisma().project.findUnique({
+      where: { id: before.projectId },
+      select: { requireLeadDoneApproval: true }
+    });
+    if (project?.requireLeadDoneApproval) {
+      const isAssignee = before.assigneeId === userId;
+      const canApprove =
+        isAssignee || (await hasPermission(userId, before.projectId, 'issue.approve_done'));
+      if (!canApprove) {
+        throw new IssueAccessError('Moving to Done requires approval from a Team Lead or Project Manager');
+      }
+    }
+    completedAt = new Date();
+  } else if (data.status && !isNowDone && wasDone) {
+    completedAt = null;
+    events.push({ type: 'REOPENED', fromValue: before.status, toValue: data.status });
+  }
+
+  let startedAt = before.startedAt;
+  if (data.status && data.status !== 'BACKLOG' && !before.startedAt) {
+    startedAt = new Date();
+  }
+
   return getPrisma().$transaction(async (transaction) => {
     const updated = await transaction.issue.update({
       where: { id: issueId },
@@ -654,9 +716,15 @@ export async function updateIssue(
         type: data.type,
         status: data.status,
         priority: data.priority,
+        estimate: data.estimate !== undefined ? data.estimate : undefined,
+        teamId: data.teamId !== undefined ? data.teamId : undefined,
+        parentId: data.parentId !== undefined ? data.parentId : undefined,
+        labels: data.labels !== undefined ? data.labels : undefined,
         assigneeId: data.assigneeId,
         sprintId: data.sprintId,
-        targetDate: data.targetDate
+        targetDate: data.targetDate,
+        startedAt,
+        completedAt
       }
     });
     if (events.length > 0) {
@@ -664,6 +732,28 @@ export async function updateIssue(
         data: events.map((event) => ({ ...event, issueId, actorId: userId }))
       });
     }
+
+    if (
+      data.assigneeId &&
+      data.assigneeId !== userId &&
+      data.assigneeId !== before.assigneeId
+    ) {
+      const actor = await getPrisma().user.findUnique({
+        where: { id: userId },
+        select: { username: true, name: true }
+      });
+      const actorName = actor?.name || actor?.username || 'Someone';
+      await createNotification({
+        userId: data.assigneeId,
+        actorId: userId,
+        kind: NotificationKind.ASSIGNED,
+        projectId: before.projectId,
+        issueId: before.id,
+        title: `${actorName} assigned you to ${before.issueKey}`,
+        body: before.title
+      }).catch(() => {});
+    }
+
     return updated;
   });
 }
@@ -738,34 +828,149 @@ export async function addComment(userId: string, issueId: string, body: string) 
   const comment = await getPrisma().issueComment.create({
     data: { issueId, authorId: userId, body }
   });
+
+  await notifyMentionedUsers(userId, issue.projectId, issue.id, issue.issueKey, body).catch(() => {});
+
+  if (issue.assigneeId && issue.assigneeId !== userId) {
+    const actor = await getPrisma().user.findUnique({
+      where: { id: userId },
+      select: { username: true, name: true }
+    });
+    const actorName = actor?.name || actor?.username || 'Someone';
+    await createNotification({
+      userId: issue.assigneeId,
+      actorId: userId,
+      kind: NotificationKind.STATUS_CHANGED,
+      projectId: issue.projectId,
+      issueId: issue.id,
+      title: `${actorName} commented on ${issue.issueKey}`,
+      body: body.slice(0, 150)
+    }).catch(() => {});
+  }
+
   return { ...comment, projectId: issue.projectId };
 }
 export async function listSprints(userId: string, projectId: string) {
   await requireProjectMembership(userId, projectId);
-  return getPrisma().sprint.findMany({
+  const sprints = await getPrisma().sprint.findMany({
     where: { projectId },
-    include: { _count: { select: { issues: true } } },
-    orderBy: { createdAt: 'desc' }
+    include: {
+      team: { select: { id: true, name: true } },
+      issues: {
+        select: {
+          id: true,
+          estimate: true,
+          status: true
+        }
+      },
+      _count: { select: { issues: true } }
+    },
+    orderBy: [{ status: 'asc' }, { createdAt: 'desc' }]
+  });
+
+  return sprints.map((sprint) => {
+    const totalPoints = sprint.issues.reduce((sum, i) => sum + (i.estimate ?? 0), 0);
+    const donePoints = sprint.issues
+      .filter((i) => /^(done|closed|complete|completed|resolved|shipped|released)$/i.test(i.status))
+      .reduce((sum, i) => sum + (i.estimate ?? 0), 0);
+    const doneCount = sprint.issues.filter((i) =>
+      /^(done|closed|complete|completed|resolved|shipped|released)$/i.test(i.status)
+    ).length;
+
+    return {
+      ...sprint,
+      issueCount: sprint._count.issues,
+      doneCount,
+      totalPoints,
+      donePoints
+    };
   });
 }
 
-// ponytail: "open" means "not in a column named DONE" — a literal string
-// match, not derived from a per-column flag. Renaming/removing the DONE
-// stage silently stops this count from excluding it; add an `isDone` flag on
-// BoardColumn if that starts to matter.
-export function countOpenIssuesForUser(userId: string): Promise<number> {
-  return getPrisma().issue.count({
-    where: {
-      project: { members: { some: { userId } } },
-      status: { not: 'DONE' },
-      archivedAt: null
+export async function createSprint(
+  userId: string,
+  projectId: string,
+  name: string,
+  goal?: string,
+  capacity?: number,
+  teamId?: string
+) {
+  await requirePermission(userId, projectId, 'sprint.manage');
+  return getPrisma().sprint.create({
+    data: {
+      projectId,
+      name,
+      goal,
+      capacity: capacity ?? null,
+      teamId: teamId ?? null
     }
   });
 }
 
-export async function createSprint(userId: string, projectId: string, name: string, goal?: string) {
-  await requireProjectMembership(userId, projectId);
-  return getPrisma().sprint.create({ data: { projectId, name, goal } });
+export async function startSprint(
+  userId: string,
+  sprintId: string,
+  startsAt: Date,
+  endsAt: Date,
+  goal?: string
+) {
+  const sprint = await getPrisma().sprint.findUniqueOrThrow({
+    where: { id: sprintId },
+    include: { issues: { select: { estimate: true } } }
+  });
+  await requirePermission(userId, sprint.projectId, 'sprint.manage');
+
+  const committedPoints = sprint.issues.reduce((acc, i) => acc + (i.estimate ?? 0), 0);
+
+  return getPrisma().sprint.update({
+    where: { id: sprintId },
+    data: {
+      status: 'ACTIVE',
+      startsAt,
+      endsAt,
+      goal: goal ?? sprint.goal,
+      committedPoints
+    }
+  });
+}
+
+export async function closeSprint(
+  userId: string,
+  sprintId: string,
+  carryOverSprintId?: string | null
+) {
+  const sprint = await getPrisma().sprint.findUniqueOrThrow({
+    where: { id: sprintId },
+    include: { issues: { select: { id: true, status: true } } }
+  });
+  await requirePermission(userId, sprint.projectId, 'sprint.manage');
+
+  const openIssues = sprint.issues.filter(
+    (i) => !/^(done|closed|complete|completed|resolved|shipped|released)$/i.test(i.status)
+  );
+
+  return getPrisma().$transaction(async (tx) => {
+    if (openIssues.length > 0) {
+      await tx.issue.updateMany({
+        where: { id: { in: openIssues.map((i) => i.id) } },
+        data: { sprintId: carryOverSprintId ?? null }
+      });
+    }
+
+    return tx.sprint.update({
+      where: { id: sprintId },
+      data: {
+        status: 'COMPLETED',
+        endsAt: new Date()
+      }
+    });
+  });
+}
+
+export async function deleteSprint(userId: string, sprintId: string) {
+  const sprint = await getPrisma().sprint.findUniqueOrThrow({ where: { id: sprintId } });
+  await requirePermission(userId, sprint.projectId, 'sprint.manage');
+  return getPrisma().sprint.delete({ where: { id: sprintId } });
 }
 
 interface DetectedLink {
@@ -798,7 +1003,7 @@ export async function syncIssueLinks(userId: string, projectId: string, reposito
 
   const branches = await client.getBranches(token, repository.providerRepositoryId).catch(() => []);
 
-  // Commits are scanned across every branch — not just the default — so work
+  // Commits are scanned across every branch â€” not just the default â€” so work
   // on feature branches links its issue the moment it is pushed. Bounded and
   // deduplicated by sha since branches share most of their history.
   const MAX_SYNC_BRANCHES = 30;
@@ -884,7 +1089,7 @@ export async function syncIssueLinks(userId: string, projectId: string, reposito
   });
   const byKey = new Map(issues.map((issue) => [issue.issueKey, issue]));
 
-  // Git activity "implies" a fixed stage name (IN_PROGRESS, IN_REVIEW, …).
+  // Git activity "implies" a fixed stage name (IN_PROGRESS, IN_REVIEW, â€¦).
   // Advancing only makes sense forward, so positions are read per board from
   // its current columns; a renamed/removed stage just can't be advanced to.
   const boardIds = [...new Set(issues.map((issue) => issue.boardId))];
@@ -960,7 +1165,7 @@ export async function syncIssueLinks(userId: string, projectId: string, reposito
  * Webhook entry point: resyncs every DevFeed project tracking the repository
  * named in the payload (`full_name` / `path_with_namespace`). Each sync runs
  * as the connection owner, whose stored token authorizes the provider calls.
- * Safe to repeat — links are idempotent and statuses only advance forward.
+ * Safe to repeat â€” links are idempotent and statuses only advance forward.
  */
 export async function syncIssuesForRepositoryFullName(provider: GitProvider, fullName: string) {
   const repositories = await getPrisma().repository.findMany({

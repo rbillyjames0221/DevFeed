@@ -83,7 +83,30 @@ enum DatabaseEnvironment {
 
 enum ProjectRole {
   OWNER
+  PROJECT_MANAGER
+  LEAD
   MEMBER
+  VIEWER
+}
+
+enum OrgRole {
+  OWNER
+  PROJECT_MANAGER
+  MEMBER
+}
+
+enum MembershipSource {
+  MANUAL
+  REPOSITORY
+}
+
+enum NotificationKind {
+  ASSIGNED
+  MENTIONED
+  STATUS_CHANGED
+  DUE_SOON
+  PIPELINE_FAILED
+  SPRINT_STARTED
 }
 
 model User {
@@ -107,9 +130,16 @@ model User {
   sessions          Session[]
   projectsCreated   Project[]         @relation("ProjectCreator")
   memberships       ProjectMember[]
+  orgMemberships    OrganizationMember[]
+  teamMemberships   TeamMember[]
+  teamsLed          Team[]            @relation("TeamLead")
   issuesAssigned    Issue[]           @relation("IssueAssignee")
   issuesCreated     Issue[]           @relation("IssueCreator")
   issueComments     IssueComment[]
+  timeEntries       TimeEntry[]
+  notifications     Notification[]    @relation("UserNotifications")
+  actorNotifications Notification[]   @relation("NotificationActor")
+  gitInstallations  GitInstallation[] @relation("InstalledBy")
   docs              DocPage[]
   drawings          Drawing[]
   drawingPresence   DrawingPresence[]
@@ -148,7 +178,7 @@ model Session {
   tokenHash String   @unique
   userId    String
   expiresAt DateTime
-  /// Browser and address at sign-in, shown under My account → Sessions.
+  /// Browser and address at sign-in, shown under My account â†’ Sessions.
   userAgent String?
   ipAddress String?
   createdAt DateTime @default(now())
@@ -173,16 +203,25 @@ model Project {
   sshAllowedHosts        String[]             @default([])
   /// Branch patterns left out of the DevOps pipeline lists, e.g. "dependabot/*".
   hiddenPipelineBranches String[]             @default([])
+  organizationId         String?
+  /// Unit for estimation: "POINTS" or "HOURS".
+  estimateUnit           String               @default("POINTS")
+  /// Whether moving to the done column requires Lead or PM role.
+  requireLeadDoneApproval Boolean             @default(false)
   createdById            String
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
+  organization           Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   creator                User                 @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
   members                ProjectMember[]
+  teams                  TeamProject[]
   repositories           ProjectRepository[]
   databases              DatabaseConnection[]
   issues                 Issue[]
   boards                 Board[]
   sprints                Sprint[]
+  dailySnapshots         DailySnapshot[]
+  notifications          Notification[]
   collections            ApiCollection[]
   apiHistory             ApiHistoryEntry[]
   docs                   DocPage[]
@@ -194,19 +233,25 @@ model Project {
   auditEvents            AuditEvent[]
 
   @@index([createdById])
+  @@index([organizationId])
 }
 
 model ProjectMember {
-  id        String      @id @default(cuid())
-  projectId String
-  userId    String
-  role      ProjectRole @default(MEMBER)
-  createdAt DateTime    @default(now())
-  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String           @id @default(cuid())
+  projectId        String
+  userId           String
+  role             ProjectRole      @default(MEMBER)
+  teamId           String?
+  source           MembershipSource @default(MANUAL)
+  syncedPermission String?
+  lastSyncedAt     DateTime?
+  createdAt        DateTime         @default(now())
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, userId])
   @@index([userId])
+  @@index([projectId, role])
 }
 
 /// Provider repository metadata cached so projects can link repositories.
@@ -214,6 +259,7 @@ model ProjectMember {
 model Repository {
   id                   String              @id @default(cuid())
   gitConnectionId      String
+  installationId       String?
   providerRepositoryId String
   name                 String
   fullName             String
@@ -223,12 +269,14 @@ model Repository {
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
   connection           GitConnection       @relation(fields: [gitConnectionId], references: [id], onDelete: Cascade)
+  installation         GitInstallation?    @relation(fields: [installationId], references: [id], onDelete: SetNull)
   projects             ProjectRepository[]
   issueLinks           IssueGitLink[]
   resources            ProjectResource[]
 
   @@unique([gitConnectionId, providerRepositoryId])
   @@index([fullName])
+  @@index([installationId])
 }
 
 model ProjectRepository {
@@ -308,20 +356,26 @@ model SavedQuery {
 }
 
 model Sprint {
-  id        String       @id @default(cuid())
-  projectId String
-  name      String
-  goal      String?
-  status    SprintStatus @default(PLANNED)
-  startsAt  DateTime?
-  endsAt    DateTime?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  issues    Issue[]
+  id              String          @id @default(cuid())
+  projectId       String
+  teamId          String?
+  name            String
+  goal            String?
+  status          SprintStatus    @default(PLANNED)
+  capacity        Int?
+  committedPoints Float?
+  startsAt        DateTime?
+  endsAt          DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team            Team?           @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  issues          Issue[]
+  dailySnapshots  DailySnapshot[]
 
   @@unique([projectId, name])
   @@index([projectId, status])
+  @@index([teamId])
 }
 
 model Board {
@@ -339,7 +393,7 @@ model Board {
 
 /// A workflow stage on a board. Every board is seeded with the default
 /// stages on creation; all of them (seeded or added later) are equally
-/// rename-/removable. `Issue.status` stores the column's `name` directly —
+/// rename-/removable. `Issue.status` stores the column's `name` directly â€”
 /// "BACKLOG" is the one reserved sentinel for issues not yet on any board
 /// column, and isn't a row here.
 model BoardColumn {
@@ -350,7 +404,7 @@ model BoardColumn {
   /// default neutral styling.
   color     String?
   /// One of STATUS_ICON_NAMES (src/features/issues/status-icons.ts); null picks
-  /// an icon from the name ("Done" gets a check, "In progress" a ring, …).
+  /// an icon from the name ("Done" gets a check, "In progress" a ring, â€¦).
   icon      String?
   position  Int      @default(0)
   createdAt DateTime @default(now())
@@ -373,6 +427,10 @@ model Issue {
   /// A board column's `name`, or the reserved "BACKLOG" sentinel.
   status       String             @default("BACKLOG")
   priority     String             @default("MEDIUM")
+  estimate     Float?
+  teamId       String?
+  parentId     String?
+  labels       String[]           @default([])
   assigneeId   String?
   createdById  String
   sprintId     String?
@@ -383,6 +441,8 @@ model Issue {
   archivedAt   DateTime?
   /// When the task should be done by. Optional; a date without a time.
   targetDate   DateTime?          @db.Date
+  startedAt    DateTime?
+  completedAt  DateTime?
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
   project      Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -390,7 +450,12 @@ model Issue {
   assignee     User?              @relation("IssueAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   creator      User               @relation("IssueCreator", fields: [createdById], references: [id], onDelete: Restrict)
   sprint       Sprint?            @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  team         Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  parent       Issue?             @relation("IssueHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  subTasks     Issue[]            @relation("IssueHierarchy")
   comments     IssueComment[]
+  timeEntries  TimeEntry[]
+  notifications Notification[]
   gitLinks     IssueGitLink[]
   docLinks     DocIssueLink[]
   drawingLinks DrawingIssueLink[]
@@ -402,6 +467,8 @@ model Issue {
   @@index([boardId, archivedAt])
   @@index([sprintId])
   @@index([assigneeId])
+  @@index([teamId])
+  @@index([parentId])
 }
 
 model IssueComment {
@@ -538,7 +605,7 @@ model Drawing {
   projectId   String
   title       String
   kind        DrawingKind        @default(EXCALIDRAW)
-  /// Excalidraw: the scene (elements, trimmed appState, files). draw.io: `{ "xml": "<mxfile…>" }`.
+  /// Excalidraw: the scene (elements, trimmed appState, files). draw.io: `{ "xml": "<mxfileâ€¦>" }`.
   scene       Json               @default("{}")
   /// Slash-separated folder path, e.g. "Design/Flows"; null sits at the top level.
   folder      String?
@@ -757,6 +824,10 @@ enum IssueEventType {
   TARGET_DATE
   ARCHIVED
   RESTORED
+  ESTIMATE
+  SPRINT
+  COMMENT
+  REOPENED
 }
 
 /// One entry in a task's history: who changed what, from what, to what, when.
@@ -834,4 +905,139 @@ model AuditEvent {
 
   @@index([projectId, createdAt])
   @@index([createdAt])
+}
+
+model Organization {
+  id        String               @id @default(cuid())
+  name      String
+  slug      String               @unique
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  members   OrganizationMember[]
+  teams     Team[]
+  projects  Project[]
+}
+
+model OrganizationMember {
+  organizationId String
+  userId         String
+  role           OrgRole      @default(MEMBER)
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, userId])
+  @@index([userId])
+}
+
+model Team {
+  id             String        @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  leadId         String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead           User?         @relation("TeamLead", fields: [leadId], references: [id], onDelete: SetNull)
+  members        TeamMember[]
+  projects       TeamProject[]
+  issues         Issue[]
+  sprints        Sprint[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([leadId])
+}
+
+model TeamMember {
+  teamId         String
+  userId         String
+  weeklyCapacity Int?          @default(40)
+  createdAt      DateTime      @default(now())
+  team           Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@index([userId])
+}
+
+model TeamProject {
+  teamId    String
+  projectId String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, projectId])
+  @@index([projectId])
+}
+
+model TimeEntry {
+  id        String   @id @default(cuid())
+  issueId   String
+  userId    String
+  minutes   Int
+  note      String?
+  loggedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  issue     Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@index([userId, loggedAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  actorId   String?
+  kind      NotificationKind
+  issueId   String?
+  projectId String?
+  title     String
+  body      String?
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  user      User             @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  actor     User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  issue     Issue?           @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  project   Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@index([projectId])
+}
+
+model DailySnapshot {
+  id        String   @id @default(cuid())
+  projectId String
+  sprintId  String?
+  date      DateTime @db.Date
+  scope     Float
+  done      Float
+  open      Float
+  byStatus  Json
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sprint    Sprint?  @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, sprintId, date])
+  @@index([projectId, date])
+}
+
+model GitInstallation {
+  id            String       @id @default(cuid())
+  provider      GitProvider
+  externalId    String
+  accountLogin  String
+  accountType   String
+  installedById String?
+  suspendedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  installedBy   User?        @relation("InstalledBy", fields: [installedById], references: [id], onDelete: SetNull)
+  repositories  Repository[]
+
+  @@unique([provider, externalId])
+  @@index([installedById])
 }

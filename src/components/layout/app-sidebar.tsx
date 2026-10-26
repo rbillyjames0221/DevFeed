@@ -25,7 +25,7 @@ export default function AppSidebar({ projects }: { projects: FabProject[] }) {
   const params = useParams();
   const filteredGroups = useFilteredNavGroups(navGroups);
   const t = useT();
-  /** "/dashboard/devops" → the translated "DevOps"; unknown entries keep their own title. */
+  /** "/dashboard/devops" â†’ the translated "DevOps"; unknown entries keep their own title. */
   const titleOf = (url: string, fallback: string) =>
     t.maybe(`nav.${url.split('/').filter(Boolean).at(-1)}`) ?? fallback;
 
@@ -38,6 +38,12 @@ export default function AppSidebar({ projects }: { projects: FabProject[] }) {
 
   /** Module links stay inside the active project; otherwise fall back to the list. */
   function hrefFor(url: string): string {
+    if (url === '/teams' && linkProjectId) {
+      return `${PROJECT_SLUG_PREFIX}${linkProjectId}/teams`;
+    }
+    if (url === '/inbox' && linkProjectId) {
+      return `/inbox?projectId=${linkProjectId}`;
+    }
     if (!url.startsWith('/dashboard/')) return url;
     const slug = url.slice('/dashboard/'.length);
     if (!linkProjectId) return '/projects';

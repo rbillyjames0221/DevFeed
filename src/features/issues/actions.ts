@@ -1,6 +1,6 @@
 'use server';
 
-import { IssueFieldKind } from '@/generated/prisma/client';
+import { IssueFieldKind, IssueEventType } from '@/generated/prisma/client';
 import {
   addComment,
   archiveIssue,
@@ -9,6 +9,9 @@ import {
   createIssue,
   createIssueFieldOption,
   createSprint,
+  startSprint,
+  closeSprint,
+  deleteSprint,
   deleteBoard,
   deleteArchivedIssue,
   deleteBoardColumn,
@@ -97,6 +100,10 @@ const createIssueSchema = z.object({
   type: z.string().min(1).default('TASK'),
   status: z.string().min(1).default('BACKLOG'),
   priority: z.string().min(1).default('MEDIUM'),
+  estimate: z.coerce.number().min(0).max(1000).nullish(),
+  teamId: z.string().min(1).nullish(),
+  parentId: z.string().min(1).nullish(),
+  labels: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
   assigneeId: z.string().min(1).nullish(),
   sprintId: z.string().min(1).nullish(),
   targetDate: targetDateSchema,
@@ -170,7 +177,7 @@ export async function createIssueAction(input: unknown): Promise<IssueActionResu
         error instanceof ProviderConflictError
           ? `a branch named ${name} already exists`
           : error instanceof ProviderAuthenticationError
-            ? 'your git token can’t push to that repository'
+            ? 'your git token canâ€™t push to that repository'
             : error instanceof IssueAccessError
               ? error.message.toLowerCase()
               : `${name} could not be ${branch.mode === 'new' ? 'created' : 'linked'}`;
@@ -199,7 +206,7 @@ export async function createIssueAction(input: unknown): Promise<IssueActionResu
   if (drawingIds.length > 0) revalidatePath(`/projects/${issue.projectId}/drawings`);
   const problems = [
     ...(unlinked > 0 ? [`${unlinked} link${unlinked === 1 ? '' : 's'} could not be added`] : []),
-    ...(branchProblem ? [`the branch wasn’t linked: ${branchProblem}`] : [])
+    ...(branchProblem ? [`the branch wasnâ€™t linked: ${branchProblem}`] : [])
   ];
   return problems.length > 0
     ? { ok: true, detail: `Task created, but ${problems.join(' and ')}.` }
@@ -448,6 +455,10 @@ const updateSchema = z.object({
   type: z.string().min(1).optional(),
   status: z.string().min(1).optional(),
   priority: z.string().min(1).optional(),
+  estimate: z.coerce.number().min(0).max(1000).nullish(),
+  teamId: z.string().min(1).nullish(),
+  parentId: z.string().min(1).nullish(),
+  labels: z.array(z.string().trim().min(1).max(30)).max(20).optional(),
   assigneeId: z.string().min(1).nullish(),
   sprintId: z.string().min(1).nullish(),
   targetDate: targetDateSchema
@@ -566,9 +577,74 @@ export async function createSprintAction(input: unknown): Promise<IssueActionRes
   try {
     await createSprint(user.id, parsed.data.projectId, parsed.data.name, parsed.data.goal);
     revalidatePath(`/projects/${parsed.data.projectId}/issues`);
+    revalidatePath(`/projects/${parsed.data.projectId}/sprints`);
     return { ok: true };
   } catch (error) {
     return fail(error, 'Could not create the sprint');
+  }
+}
+
+const startSprintSchema = z.object({
+  projectId: z.string().min(1),
+  sprintId: z.string().min(1),
+  startsAt: z.coerce.date(),
+  endsAt: z.coerce.date(),
+  goal: z.string().trim().max(500).optional()
+});
+
+export async function startSprintAction(input: unknown): Promise<IssueActionResult> {
+  const user = await requireUser();
+  const parsed = startSprintSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid sprint parameters' };
+
+  try {
+    await startSprint(user.id, parsed.data.sprintId, parsed.data.startsAt, parsed.data.endsAt, parsed.data.goal);
+    revalidatePath(`/projects/${parsed.data.projectId}/issues`);
+    revalidatePath(`/projects/${parsed.data.projectId}/sprints`);
+    return { ok: true };
+  } catch (error) {
+    return fail(error, 'Could not start sprint');
+  }
+}
+
+const closeSprintSchema = z.object({
+  projectId: z.string().min(1),
+  sprintId: z.string().min(1),
+  carryOverSprintId: z.string().nullish()
+});
+
+export async function closeSprintAction(input: unknown): Promise<IssueActionResult> {
+  const user = await requireUser();
+  const parsed = closeSprintSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid sprint close request' };
+
+  try {
+    await closeSprint(user.id, parsed.data.sprintId, parsed.data.carryOverSprintId);
+    revalidatePath(`/projects/${parsed.data.projectId}/issues`);
+    revalidatePath(`/projects/${parsed.data.projectId}/sprints`);
+    return { ok: true };
+  } catch (error) {
+    return fail(error, 'Could not close sprint');
+  }
+}
+
+const deleteSprintSchema = z.object({
+  projectId: z.string().min(1),
+  sprintId: z.string().min(1)
+});
+
+export async function deleteSprintAction(input: unknown): Promise<IssueActionResult> {
+  const user = await requireUser();
+  const parsed = deleteSprintSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid request' };
+
+  try {
+    await deleteSprint(user.id, parsed.data.sprintId);
+    revalidatePath(`/projects/${parsed.data.projectId}/issues`);
+    revalidatePath(`/projects/${parsed.data.projectId}/sprints`);
+    return { ok: true };
+  } catch (error) {
+    return fail(error, 'Could not delete sprint');
   }
 }
 
@@ -600,7 +676,7 @@ export async function syncIssueLinksAction(input: unknown): Promise<IssueActionR
 
 export interface IssueHistoryEntry {
   id: string;
-  type: 'CREATED' | 'STATUS' | 'ASSIGNEE' | 'PRIORITY' | 'TARGET_DATE' | 'ARCHIVED' | 'RESTORED';
+  type: IssueEventType;
   fromValue: string | null;
   toValue: string | null;
   viaGit: boolean;
@@ -689,7 +765,7 @@ export async function listIssueBranchesAction(input: unknown): Promise<IssueBran
     return { ok: true, branches };
   } catch (error) {
     if (error instanceof ProviderAuthenticationError) {
-      return { ok: false, error: 'Your git token can’t read this repository.' };
+      return { ok: false, error: 'Your git token canâ€™t read this repository.' };
     }
     return fail(error, 'Could not load the branches');
   }
@@ -731,7 +807,7 @@ export async function createIssueBranchAction(input: unknown): Promise<IssueActi
       return { ok: false, error: `A branch named ${name} already exists. Link it instead.` };
     }
     if (error instanceof ProviderAuthenticationError) {
-      return { ok: false, error: 'Your git token can’t push to this repository.' };
+      return { ok: false, error: 'Your git token canâ€™t push to this repository.' };
     }
     return fail(error, `Could not create ${name}`);
   }
@@ -794,7 +870,7 @@ export async function listProjectBranchesAction(input: unknown): Promise<Project
     return { ok: true, branches };
   } catch (error) {
     if (error instanceof ProviderAuthenticationError) {
-      return { ok: false, error: 'Your git token can’t read this repository.' };
+      return { ok: false, error: 'Your git token canâ€™t read this repository.' };
     }
     return fail(error, 'Could not load the branches');
   }

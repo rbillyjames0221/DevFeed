@@ -70,7 +70,9 @@ function MenuInner({ projects }: { projects: FabProject[] }) {
   const [switching, startSwitch] = useTransition();
 
   const routeProjectId = typeof params.projectId === 'string' ? params.projectId : null;
-  const active = projects.find((project) => project.id === routeProjectId) ?? null;
+  const active =
+    projects.find((project) => project.id === routeProjectId) ??
+    (routeProjectId ? null : (projects[0] ?? null));
 
   function goToProject(projectId: string) {
     startSwitch(() => router.push(projectPath(pathname, projectId)));
@@ -106,7 +108,7 @@ function MenuInner({ projects }: { projects: FabProject[] }) {
                     {active?.name ?? 'Select a project'}
                   </span>
                   <span className='text-muted-foreground truncate text-xs'>
-                    {switching ? 'Switching…' : 'Project'}
+                    {switching ? 'Switchingâ€¦' : 'Project'}
                   </span>
                 </span>
                 <Icons.chevronsUpDown
@@ -127,7 +129,7 @@ function MenuInner({ projects }: { projects: FabProject[] }) {
                   <Input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder='Search projects…'
+                    placeholder='Search projectsâ€¦'
                     aria-label='Search projects'
                   />
                 </div>
@@ -143,6 +145,10 @@ function MenuInner({ projects }: { projects: FabProject[] }) {
                   ))
                 )}
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push('/projects')}>
+                  <Icons.dashboard aria-hidden='true' />
+                  All projects
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setCreateOpen(true)}>
                   <Icons.add aria-hidden='true' />
                   Create project
@@ -227,7 +233,7 @@ function StartFromRepo({
     <div className='space-y-3 border-t pt-4'>
       <p className='text-xs font-semibold tracking-wide uppercase'>Start from a repository</p>
       {!repos ? (
-        <p className='text-muted-foreground text-sm'>Loading repositories…</p>
+        <p className='text-muted-foreground text-sm'>Loading repositoriesâ€¦</p>
       ) : repos.length === 0 ? (
         <p className='text-muted-foreground text-sm'>
           No repositories reachable. Sign in with a token that can see one.
@@ -262,7 +268,7 @@ function StartFromRepo({
               if (!touched) setName('');
             }}
             disabled={pending}
-            placeholder='Search repositories…'
+            placeholder='Search repositoriesâ€¦'
           />
           <div className='space-y-2'>
             <Label htmlFor='fab-project-name'>Project name</Label>
@@ -286,7 +292,7 @@ function StartFromRepo({
             </Alert>
           )}
           <Button type='submit' disabled={pending} className='w-full'>
-            {pending ? 'Creating…' : 'Create project & link'}
+            {pending ? 'Creatingâ€¦' : 'Create project & link'}
           </Button>
         </form>
       )}

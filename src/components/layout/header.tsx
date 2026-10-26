@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import { SidebarTrigger } from '../ui/sidebar';
 import { Separator } from '../ui/separator';
 import { Breadcrumbs } from '../breadcrumbs';
@@ -6,6 +7,8 @@ import SearchInput from '../search-input';
 import { ThemeSelector } from '../themes/theme-selector';
 import { ThemeModeToggle } from '../themes/theme-mode-toggle';
 import { UserMenu } from '@/components/layout/user-menu';
+import { Button } from '@/components/ui/button';
+import { Icons } from '@/components/icons';
 
 interface HeaderProps {
   username: string;
@@ -26,6 +29,11 @@ export default function Header({ username, isAdmin, projects }: HeaderProps) {
         <div className='hidden md:flex'>
           <SearchInput />
         </div>
+        <Link href='/inbox'>
+          <Button variant='ghost' size='icon' aria-label='Inbox' title='Inbox'>
+            <Icons.notification className='size-4' />
+          </Button>
+        </Link>
         <ThemeModeToggle />
         <div className='hidden sm:block'>
           <ThemeSelector />

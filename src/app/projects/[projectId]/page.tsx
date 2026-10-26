@@ -14,14 +14,21 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   getRepositoryMergeRequests,
   getRepositoryPipelines,
+  listAssignableCollaborators,
   listProjectRepositories
 } from '@/features/git/service';
+import {
+  DashboardCollaborators,
+  type DashboardMember
+} from '@/features/projects/components/dashboard-collaborators';
 import { ThroughputChart } from '@/features/projects/components/throughput-chart';
 import { getProjectDashboard, type ProjectDashboard } from '@/features/projects/dashboard';
 import { ENVIRONMENT_LABELS } from '@/features/resources/labels';
 import { requireUser } from '@/lib/auth/session';
+import { getPrisma } from '@/lib/db/prisma';
 import { formatTimeAgo } from '@/lib/format';
 import type { GitPipeline } from '@/lib/git/provider';
+import { hasPermission } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -200,11 +207,17 @@ export default async function ProjectDashboardPage({
         </div>
 
         <div className='grid gap-4 lg:grid-cols-2'>
-          <Suspense fallback={<SectionSkeleton title='Environments' />}>
-            <Environments userId={user.id} projectId={projectId} resources={dashboard.resources} />
+          <Suspense fallback={<SectionSkeleton title='Collaborators' />}>
+            <CollaboratorsSection userId={user.id} projectId={projectId} />
           </Suspense>
           <Suspense fallback={<SectionSkeleton title='Open pull requests' />}>
             <PullRequests userId={user.id} projectId={projectId} />
+          </Suspense>
+        </div>
+
+        <div>
+          <Suspense fallback={<SectionSkeleton title='Environments' />}>
+            <Environments userId={user.id} projectId={projectId} resources={dashboard.resources} />
           </Suspense>
         </div>
       </div>
@@ -821,6 +834,50 @@ function Activity({ items }: { items: ProjectDashboard['activity'] }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+async function CollaboratorsSection({
+  userId,
+  projectId
+}: {
+  userId: string;
+  projectId: string;
+}) {
+  const [members, canManage, gitCollaborators] = await Promise.all([
+    getPrisma().projectMember.findMany({
+      where: { projectId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            name: true,
+            avatarUrl: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
+    }),
+    hasPermission(userId, projectId, 'members.manage'),
+    listAssignableCollaborators(userId, projectId).catch(() => [])
+  ]);
+
+  const formattedMembers: DashboardMember[] = members.map((m) => ({
+    userId: m.userId,
+    username: m.user.username,
+    name: m.user.name,
+    avatarUrl: m.user.avatarUrl,
+    role: m.role
+  }));
+
+  return (
+    <DashboardCollaborators
+      projectId={projectId}
+      members={formattedMembers}
+      canManageMembers={canManage}
+      assignableFromGit={gitCollaborators}
+    />
   );
 }
 

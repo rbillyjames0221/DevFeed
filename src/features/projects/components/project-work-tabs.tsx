@@ -3,11 +3,13 @@ import { cn } from '@/lib/utils';
 
 interface ProjectWorkTabsProps {
   projectId: string;
-  active: 'board' | 'docs' | 'drawings';
+  active: 'board' | 'sprints' | 'analytics' | 'docs' | 'drawings';
 }
 
 const tabs = [
   { id: 'board' as const, label: 'Board', path: 'issues' },
+  { id: 'sprints' as const, label: 'Sprints', path: 'sprints' },
+  { id: 'analytics' as const, label: 'Analytics', path: 'analytics' },
   { id: 'docs' as const, label: 'Docs', path: 'docs' },
   { id: 'drawings' as const, label: 'Drawings', path: 'drawings' }
 ];

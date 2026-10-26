@@ -1,5 +1,6 @@
 'use client';
 
+import { ProjectRole } from '@/features/projects/roles';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,8 +34,25 @@ export interface SettingsMember {
   username: string;
   name: string | null;
   avatarUrl: string | null;
-  role: 'OWNER' | 'MEMBER';
+  role: ProjectRole;
   joinedAt: Date;
+}
+
+function roleLabel(role: ProjectRole): string {
+  switch (role) {
+    case 'OWNER':
+      return 'Owner';
+    case 'PROJECT_MANAGER':
+      return 'Project Manager';
+    case 'LEAD':
+      return 'Team Lead';
+    case 'MEMBER':
+      return 'Member';
+    case 'VIEWER':
+      return 'Viewer';
+    default:
+      return role;
+  }
 }
 
 interface MembersSettingsProps {
@@ -57,7 +75,7 @@ export function MembersSettings({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [username, setUsername] = useState('');
-  const [role, setRole] = useState<'MEMBER' | 'OWNER'>('MEMBER');
+  const [role, setRole] = useState<ProjectRole>(ProjectRole.MEMBER);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const dateFormat = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' });
 
@@ -101,7 +119,7 @@ export function MembersSettings({
                       )}
                     </p>
                     <p className='text-muted-foreground truncate text-xs'>
-                      @{member.username} ·{' '}
+                      @{member.username} Â·{' '}
                       {t('projectSettings.members.joined', {
                         date: dateFormat.format(member.joinedAt)
                       })}
@@ -123,8 +141,11 @@ export function MembersSettings({
                           )
                         }
                       >
-                        <option value='MEMBER'>{t('common.member')}</option>
-                        <option value='OWNER'>{t('common.owner')}</option>
+                        <option value={ProjectRole.MEMBER}>{roleLabel(ProjectRole.MEMBER)}</option>
+                        <option value={ProjectRole.LEAD}>{roleLabel(ProjectRole.LEAD)}</option>
+                        <option value={ProjectRole.PROJECT_MANAGER}>{roleLabel(ProjectRole.PROJECT_MANAGER)}</option>
+                        <option value={ProjectRole.OWNER}>{roleLabel(ProjectRole.OWNER)}</option>
+                        <option value={ProjectRole.VIEWER}>{roleLabel(ProjectRole.VIEWER)}</option>
                       </NativeSelect>
                       <Button
                         variant='ghost'
@@ -136,8 +157,8 @@ export function MembersSettings({
                       </Button>
                     </>
                   ) : (
-                    <Badge variant={member.role === 'OWNER' ? 'default' : 'secondary'}>
-                      {member.role === 'OWNER' ? t('common.owner') : t('common.member')}
+                    <Badge variant={member.role === ProjectRole.OWNER || member.role === ProjectRole.PROJECT_MANAGER ? 'default' : 'secondary'}>
+                      {roleLabel(member.role)}
                     </Badge>
                   )}
                 </li>
@@ -184,10 +205,13 @@ export function MembersSettings({
               <NativeSelect
                 aria-label={t('projectSettings.members.role')}
                 value={role}
-                onChange={(event) => setRole(event.target.value as 'MEMBER' | 'OWNER')}
+                onChange={(event) => setRole(event.target.value as ProjectRole)}
               >
-                <option value='MEMBER'>{t('common.member')}</option>
-                <option value='OWNER'>{t('common.owner')}</option>
+                <option value={ProjectRole.MEMBER}>{roleLabel(ProjectRole.MEMBER)}</option>
+                <option value={ProjectRole.LEAD}>{roleLabel(ProjectRole.LEAD)}</option>
+                <option value={ProjectRole.PROJECT_MANAGER}>{roleLabel(ProjectRole.PROJECT_MANAGER)}</option>
+                <option value={ProjectRole.OWNER}>{roleLabel(ProjectRole.OWNER)}</option>
+                <option value={ProjectRole.VIEWER}>{roleLabel(ProjectRole.VIEWER)}</option>
               </NativeSelect>
               <Button type='submit' disabled={pending || !username.trim()}>
                 <Icons.add /> {t('common.add')}
