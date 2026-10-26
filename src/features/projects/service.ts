@@ -1,4 +1,4 @@
-import { IssueFieldKind, Prisma, ProjectRole } from '@/generated/prisma/client';
+import { GitProvider, IssueFieldKind, Prisma, ProjectRole, UserRole } from '@/generated/prisma/client';
 import { DEMO_DISABLED_MESSAGE, isDemoMode } from '@/lib/demo';
 import { getPrisma } from '@/lib/db/prisma';
 import { toProjectSlug, withSlugSuffix } from '@/lib/projects/slug';
@@ -133,11 +133,65 @@ export async function addProjectMemberByUsername(
   // Every demo account is called "demo": adding one would pull in another visitor.
   if (isDemoMode()) throw new ProjectAccessError(DEMO_DISABLED_MESSAGE);
   await requirePermission(userId, projectId, 'members.manage');
-  const target = await getPrisma().user.findFirst({
-    where: { username: { equals: username.trim(), mode: 'insensitive' } },
+  const cleanUsername = username.trim().replace(/^@/, '');
+  let target = await getPrisma().user.findFirst({
+    where: { username: { equals: cleanUsername, mode: 'insensitive' } },
     select: { id: true }
   });
-  if (!target) throw new ProjectAccessError('No user with that username has signed in yet');
+
+  if (!target) {
+    // Try resolving from GitHub directly
+    const ghRes = await fetch(`https://api.github.com/users/${encodeURIComponent(cleanUsername)}`, {
+      headers: { 'User-Agent': 'DevFeed', Accept: 'application/vnd.github.v3+json' }
+    }).catch(() => null);
+
+    if (ghRes && ghRes.ok) {
+      const ghUser = (await ghRes.json()) as {
+        id: number;
+        login: string;
+        name: string | null;
+        avatar_url: string | null;
+      };
+
+      const created = await getPrisma().user.upsert({
+        where: {
+          provider_providerUserId: {
+            provider: GitProvider.GITHUB,
+            providerUserId: String(ghUser.id)
+          }
+        },
+        create: {
+          provider: GitProvider.GITHUB,
+          providerUserId: String(ghUser.id),
+          username: ghUser.login,
+          name: ghUser.name ?? ghUser.login,
+          avatarUrl: ghUser.avatar_url,
+          role: UserRole.MEMBER
+        },
+        update: {
+          username: ghUser.login,
+          name: ghUser.name ?? ghUser.login,
+          avatarUrl: ghUser.avatar_url
+        },
+        select: { id: true }
+      });
+      target = created;
+    } else {
+      // Create provisional account so they can still be assigned to the project
+      const created = await getPrisma().user.create({
+        data: {
+          provider: GitProvider.GITHUB,
+          providerUserId: `provisional:${cleanUsername.toLowerCase()}`,
+          username: cleanUsername,
+          name: cleanUsername,
+          role: UserRole.MEMBER
+        },
+        select: { id: true }
+      });
+      target = created;
+    }
+  }
+
   if (target.id === userId) throw new ProjectAccessError('You are already a member');
   return getPrisma().projectMember.upsert({
     where: { projectId_userId: { projectId, userId: target.id } },

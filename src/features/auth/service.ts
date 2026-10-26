@@ -79,7 +79,7 @@ export async function signInWithToken({
     };
 
     const user = await getPrisma().$transaction(async (transaction) => {
-      const existing = await transaction.user.findUnique({
+      let existing = await transaction.user.findUnique({
         where: {
           provider_providerUserId: {
             provider: prismaProvider,
@@ -87,6 +87,22 @@ export async function signInWithToken({
           }
         }
       });
+      if (!existing) {
+        existing = await transaction.user.findFirst({
+          where: {
+            username: { equals: identity.username, mode: 'insensitive' }
+          }
+        });
+        if (existing) {
+          existing = await transaction.user.update({
+            where: { id: existing.id },
+            data: {
+              provider: prismaProvider,
+              providerUserId: identity.providerUserId
+            }
+          });
+        }
+      }
       const userCount = existing ? 1 : await transaction.user.count();
 
       const registration = decideRegistration(
