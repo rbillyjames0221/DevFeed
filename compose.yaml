@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: devfeed
+      POSTGRES_USER: devfeed
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - devfeed-postgres:/var/lib/postgresql/data
+    ports:
+      - '127.0.0.1:${DEVFEED_POSTGRES_PORT:-5432}:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U devfeed -d devfeed']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - devfeed-redis:/data
+    ports:
+      - '127.0.0.1:${DEVFEED_REDIS_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    image: ghcr.io/rbillyjames0221/devfeed-migrate:${DEVFEED_VERSION:-latest}
+    build:
+      context: .
+      target: migrate
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    environment:
+      DATABASE_URL: ${DEVFEED_DOCKER_DATABASE_URL:?Set DEVFEED_DOCKER_DATABASE_URL in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  web:
+    image: ghcr.io/rbillyjames0221/devfeed:${DEVFEED_VERSION:-latest}
+    build: .
+    environment:
+      DATABASE_URL: ${DEVFEED_DOCKER_DATABASE_URL:?Set DEVFEED_DOCKER_DATABASE_URL in .env}
+      DEVFEED_ENCRYPTION_KEY: ${DEVFEED_ENCRYPTION_KEY:?Set DEVFEED_ENCRYPTION_KEY in .env}
+      DEVFEED_AUTH_PROVIDERS: ${DEVFEED_AUTH_PROVIDERS:-github,gitlab}
+      DEVFEED_GITLAB_ALLOWED_HOSTS: ${DEVFEED_GITLAB_ALLOWED_HOSTS:-gitlab.com}
+      DEVFEED_GITHUB_ALLOWED_ORGS: ${DEVFEED_GITHUB_ALLOWED_ORGS:-}
+      DEVFEED_GITLAB_ALLOWED_GROUPS: ${DEVFEED_GITLAB_ALLOWED_GROUPS:-}
+      DEVFEED_ALLOW_BOOTSTRAP: ${DEVFEED_ALLOW_BOOTSTRAP:-false}
+      DEVFEED_ALLOW_REGISTRATION: ${DEVFEED_ALLOW_REGISTRATION:-false}
+      DEVFEED_TRUST_PROXY: ${DEVFEED_TRUST_PROXY:-false}
+    ports:
+      - '3000:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  devfeed-postgres:
+  devfeed-redis:
