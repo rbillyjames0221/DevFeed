@@ -76,7 +76,7 @@ export function GenerateDocReportModal({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const now = useMemo(() => new Date(), []);
+  const [now] = useState(() => new Date());
   const todayStr = useMemo(() => now.toISOString().slice(0, 10), [now]);
 
   // Form states
@@ -165,7 +165,7 @@ export function GenerateDocReportModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-h-[90vh] max-w-xl overflow-y-auto p-4 sm:p-6'>
+      <DialogContent className='max-h-[90vh] sm:max-w-xl overflow-y-auto overflow-x-hidden'>
         <DialogHeader className='border-b pb-3 text-left'>
           <div className='flex items-center gap-2'>
             <Badge variant='outline' className='text-[10px]'>
@@ -181,24 +181,24 @@ export function GenerateDocReportModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className='space-y-4 pt-2'>
+        <div className='space-y-4 pt-1'>
           {/* 1. REPORT SCOPE */}
           <div className='space-y-2'>
-            <label className='text-xs font-semibold tracking-tight text-foreground'>
+            <span className='block text-xs font-semibold tracking-tight text-foreground'>
               1. Report Scope
-            </label>
-            <div className='grid grid-cols-2 gap-2'>
+            </span>
+            <div className='grid grid-cols-1 sm:grid-cols-2 gap-2'>
               <button
                 type='button'
                 onClick={() => setScope('overall')}
-                className={`flex cursor-pointer flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors ${
+                className={`flex cursor-pointer flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors min-w-0 ${
                   scope === 'overall'
                     ? 'border-primary bg-primary/5 ring-1 ring-primary'
                     : 'border-border/80 bg-background hover:bg-muted/50'
                 }`}
               >
                 <div className='flex items-center gap-1.5 font-medium text-xs'>
-                  <Icons.dashboard className='size-3.5 text-primary' />
+                  <Icons.dashboard className='size-3.5 text-primary shrink-0' />
                   <span>Overall Project</span>
                 </div>
                 <p className='text-muted-foreground text-[11px] leading-tight'>
@@ -214,14 +214,14 @@ export function GenerateDocReportModal({
                     setMemberUserId(project.members[0].id);
                   }
                 }}
-                className={`flex cursor-pointer flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors ${
+                className={`flex cursor-pointer flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors min-w-0 ${
                   scope === 'member'
                     ? 'border-primary bg-primary/5 ring-1 ring-primary'
                     : 'border-border/80 bg-background hover:bg-muted/50'
                 }`}
               >
                 <div className='flex items-center gap-1.5 font-medium text-xs'>
-                  <Icons.user className='size-3.5 text-primary' />
+                  <Icons.user className='size-3.5 text-primary shrink-0' />
                   <span>Individual Member</span>
                 </div>
                 <p className='text-muted-foreground text-[11px] leading-tight'>
@@ -254,9 +254,9 @@ export function GenerateDocReportModal({
 
           {/* 2. REPORT PERIOD / TYPE */}
           <div className='space-y-2'>
-            <label className='text-xs font-semibold tracking-tight text-foreground'>
+            <span className='block text-xs font-semibold tracking-tight text-foreground'>
               2. Report Period
-            </label>
+            </span>
             <div className='grid grid-cols-3 gap-2'>
               {(
                 [
@@ -269,14 +269,14 @@ export function GenerateDocReportModal({
                   key={tab.id}
                   type='button'
                   onClick={() => setReportType(tab.id)}
-                  className={`flex cursor-pointer flex-col items-center rounded-lg border p-2.5 text-center transition-colors ${
+                  className={`flex cursor-pointer flex-col items-center rounded-lg border p-2.5 text-center transition-colors min-w-0 ${
                     reportType === tab.id
                       ? 'border-primary bg-primary/5 font-semibold text-primary ring-1 ring-primary'
                       : 'border-border/80 bg-background text-muted-foreground hover:bg-muted/50'
                   }`}
                 >
-                  <span className='text-xs'>{tab.label}</span>
-                  <span className='text-[10px] opacity-75'>{tab.desc}</span>
+                  <span className='text-xs truncate w-full'>{tab.label}</span>
+                  <span className='text-[10px] opacity-75 truncate w-full'>{tab.desc}</span>
                 </button>
               ))}
             </div>
@@ -379,7 +379,7 @@ export function GenerateDocReportModal({
             <p className='font-semibold text-foreground truncate'>
               {previewTitle}
             </p>
-            <div className='flex items-center gap-2 pt-0.5 text-[11px] text-muted-foreground'>
+            <div className='flex flex-wrap items-center gap-x-2 gap-y-1 pt-0.5 text-[11px] text-muted-foreground'>
               <span>Folder: <code className='text-primary font-mono'>{previewFolder}</code></span>
               <span>·</span>
               <span>Date range: <strong className='text-foreground'>{activeStartDate}</strong> to <strong className='text-foreground'>{activeEndDate}</strong></span>
@@ -387,7 +387,7 @@ export function GenerateDocReportModal({
           </div>
         </div>
 
-        <DialogFooter className='border-t pt-3 flex flex-row items-center justify-end gap-2'>
+        <DialogFooter className='flex flex-row items-center justify-end gap-2'>
           <Button
             type='button'
             variant='outline'

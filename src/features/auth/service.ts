@@ -188,13 +188,23 @@ export async function signInWithToken({
 }
 
 export function isAdminAuthEnabled(): boolean {
-  return Boolean(process.env.DEVFEED_ADMIN_USERNAME || process.env.DEVFEED_ADMIN_PASSWORD);
+  const envVal =
+    process.env.DEVFEED_ENABLE_ADMIN_LOGIN ?? process.env.DEVFEED_ALLOW_ADMIN_LOGIN;
+  if (envVal !== undefined) {
+    const normalized = envVal.trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes';
+  }
+  return false;
 }
 
 export async function signInWithAdminCredentials({
   username,
   password
 }: AdminLoginInput): Promise<LoginResult> {
+  if (!isAdminAuthEnabled()) {
+    return { ok: false, error: 'Admin login is disabled' };
+  }
+
   const configuredUser = (process.env.DEVFEED_ADMIN_USERNAME ?? 'admin').trim().toLowerCase();
   const configuredEmail = (process.env.DEVFEED_ADMIN_EMAIL ?? 'admin@devfeed.local').trim().toLowerCase();
   const configuredPass = process.env.DEVFEED_ADMIN_PASSWORD ?? 'admin';

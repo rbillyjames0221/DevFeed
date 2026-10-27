@@ -1,4 +1,5 @@
 import { UserRole } from '@/generated/prisma/client';
+import { isAdminAuthEnabled } from '@/features/auth/service';
 import { recordAudit } from '@/lib/audit/record';
 import { getPrisma } from '@/lib/db/prisma';
 
@@ -111,6 +112,7 @@ export function signInPolicy() {
     providers: envList(process.env.DEVFEED_AUTH_PROVIDERS ?? 'github,gitlab'),
     allowRegistration: process.env.DEVFEED_ALLOW_REGISTRATION === 'true',
     allowBootstrap: process.env.DEVFEED_ALLOW_BOOTSTRAP === 'true',
+    allowAdminLogin: isAdminAuthEnabled(),
     githubOrganizations: envList(process.env.DEVFEED_GITHUB_ALLOWED_ORGS),
     gitlabGroups: envList(process.env.DEVFEED_GITLAB_ALLOWED_GROUPS),
     trustProxy: process.env.DEVFEED_TRUST_PROXY === 'true'

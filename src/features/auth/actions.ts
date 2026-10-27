@@ -9,6 +9,7 @@ import {
   type LoginResult
 } from '@/features/auth/schema';
 import {
+  isAdminAuthEnabled,
   providerIsEnabled,
   signInWithAdminCredentials,
   signInWithToken
@@ -37,6 +38,10 @@ export async function loginAction(input: LoginInput): Promise<LoginResult> {
 }
 
 export async function adminLoginAction(input: AdminLoginInput): Promise<LoginResult> {
+  if (!isAdminAuthEnabled()) {
+    return { ok: false, error: 'Admin login is disabled' };
+  }
+
   const parsed = adminLoginSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid credentials' };

@@ -311,6 +311,7 @@ export const fil: MessageShape<typeof en> = {
       providers: 'Mga provider sa pag-sign in',
       registration: 'Puwedeng mag-register ang mga bagong tao',
       bootstrap: 'Magiging administrator ang unang mag-sign in',
+      adminLogin: 'Pag-sign in gamit ang admin credential',
       githubOrgs: 'Mga pinapayagang GitHub organization',
       gitlabGroups: 'Mga pinapayagang GitLab group',
       trustProxy: 'Pagkatiwalaan ang X-Forwarded-For',

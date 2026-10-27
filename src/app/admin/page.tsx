@@ -95,6 +95,11 @@ async function PolicyTab() {
       value: yesNo(policy.allowBootstrap)
     },
     {
+      label: t('admin.policy.adminLogin'),
+      variable: 'DEVFEED_ENABLE_ADMIN_LOGIN',
+      value: yesNo(policy.allowAdminLogin)
+    },
+    {
       label: t('admin.policy.githubOrgs'),
       variable: 'DEVFEED_GITHUB_ALLOWED_ORGS',
       value: <ValueList values={policy.githubOrganizations} empty={t('admin.policy.anyone')} />

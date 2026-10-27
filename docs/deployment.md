@@ -32,6 +32,7 @@ Optional controls:
 - `DEVFEED_AUTH_PROVIDERS`: comma-separated `github,gitlab` values.
 - `DEVFEED_ALLOW_BOOTSTRAP`: temporarily permits the first login to become administrator.
 - `DEVFEED_ALLOW_REGISTRATION`: permits additional valid provider users; defaults to `false`.
+- `DEVFEED_ENABLE_ADMIN_LOGIN`: permits direct admin credentials login; defaults to `false`.
 - `DEVFEED_TRUST_PROXY`: set `true` only when the reverse proxy overwrites `X-Forwarded-For`.
 - `DEVFEED_POSTGRES_PORT` and `DEVFEED_REDIS_PORT`: localhost-bound development ports.
 

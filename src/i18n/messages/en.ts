@@ -300,6 +300,7 @@ export const en = {
       providers: 'Sign-in providers',
       registration: 'New people can register',
       bootstrap: 'First sign-in becomes administrator',
+      adminLogin: 'Admin credential login',
       githubOrgs: 'Allowed GitHub organizations',
       gitlabGroups: 'Allowed GitLab groups',
       trustProxy: 'Trust X-Forwarded-For',

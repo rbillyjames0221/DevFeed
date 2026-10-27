@@ -1,7 +1,7 @@
 import { DevFeedMark } from '@/components/brand/devfeed-mark';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoginForm } from '@/features/auth/components/login-form';
-import { oauthSignInProviders } from '@/features/auth/service';
+import { isAdminAuthEnabled, oauthSignInProviders } from '@/features/auth/service';
 import { StartDemoCard } from '@/features/demo/components/start-demo-card';
 import { isDemoMode } from '@/lib/demo';
 import { getCurrentUser } from '@/lib/auth/session';
@@ -9,6 +9,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
 export const metadata: Metadata = { title: 'Sign in' };
+export const dynamic = 'force-dynamic';
 
 interface LoginPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -40,6 +41,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <CardContent>
           <LoginForm
             oauthProviders={oauthSignInProviders()}
+            adminLoginEnabled={isAdminAuthEnabled()}
             initialError={typeof error === 'string' ? error.slice(0, 300) : undefined}
           />
           <p className='text-muted-foreground mt-5 text-center text-xs leading-relaxed'>

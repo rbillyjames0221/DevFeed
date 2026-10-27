@@ -31,6 +31,8 @@ interface LoginFormProps {
   oauthProviders: ('github' | 'gitlab')[];
   /** A failed OAuth round trip comes back as `?error=`. */
   initialError?: string;
+  /** Whether the username/password admin login tab is enabled. Defaults to false. */
+  adminLoginEnabled?: boolean;
 }
 
 const OAUTH_BUTTONS = {
@@ -253,7 +255,11 @@ function GitSubForm({
   );
 }
 
-export function LoginForm({ oauthProviders, initialError }: LoginFormProps) {
+export function LoginForm({
+  oauthProviders,
+  initialError,
+  adminLoginEnabled = false
+}: LoginFormProps) {
   const router = useRouter();
 
   const handleSuccess = () => {
@@ -261,23 +267,31 @@ export function LoginForm({ oauthProviders, initialError }: LoginFormProps) {
     router.refresh();
   };
 
+  if (!adminLoginEnabled) {
+    return (
+      <div className='space-y-4'>
+        <GitSubForm
+          oauthProviders={oauthProviders}
+          initialError={initialError}
+          onSuccess={handleSuccess}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className='space-y-4'>
-      <Tabs defaultValue='admin' className='w-full'>
+      <Tabs defaultValue='git' className='w-full'>
         <TabsList className='grid w-full grid-cols-2'>
-          <TabsTrigger value='admin' className='flex items-center gap-1.5'>
-            <Icons.user className='size-3.5' />
-            Admin Login
-          </TabsTrigger>
           <TabsTrigger value='git' className='flex items-center gap-1.5'>
             <Icons.github className='size-3.5' />
             GitHub / Git
           </TabsTrigger>
+          <TabsTrigger value='admin' className='flex items-center gap-1.5'>
+            <Icons.user className='size-3.5' />
+            Admin Login
+          </TabsTrigger>
         </TabsList>
-
-        <TabsContent value='admin' className='pt-2'>
-          <AdminSubForm onSuccess={handleSuccess} />
-        </TabsContent>
 
         <TabsContent value='git' className='pt-2'>
           <GitSubForm
@@ -285,6 +299,10 @@ export function LoginForm({ oauthProviders, initialError }: LoginFormProps) {
             initialError={initialError}
             onSuccess={handleSuccess}
           />
+        </TabsContent>
+
+        <TabsContent value='admin' className='pt-2'>
+          <AdminSubForm onSuccess={handleSuccess} />
         </TabsContent>
       </Tabs>
     </div>
