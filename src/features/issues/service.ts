@@ -253,6 +253,22 @@ export async function listIssues(userId: string, projectId: string, boardId?: st
       assignee: { select: { id: true, username: true, name: true } },
       creator: { select: { id: true, username: true, name: true } },
       sprint: { select: { id: true, name: true } },
+      parent: {
+        select: {
+          id: true,
+          issueKey: true,
+          title: true,
+          boardId: true,
+          subTasks: {
+            where: { archivedAt: null },
+            select: { id: true, issueKey: true, title: true, boardId: true }
+          }
+        }
+      },
+      subTasks: {
+        where: { archivedAt: null },
+        select: { id: true, issueKey: true, title: true, boardId: true }
+      },
       docLinks: {
         include: { doc: { select: { id: true, slug: true, title: true } } }
       },
@@ -271,6 +287,16 @@ export async function listIssues(userId: string, projectId: string, boardId?: st
     linkedDocs: docLinks.map((link) => link.doc),
     linkedDrawings: drawingLinks.map((link) => link.drawing)
   }));
+}
+
+/** Lightweight candidate parent list for the parent task picker. */
+export async function listCandidateParents(userId: string, projectId: string) {
+  await requireProjectMembership(userId, projectId);
+  return getPrisma().issue.findMany({
+    where: { projectId, archivedAt: null },
+    select: { id: true, issueKey: true, title: true, boardId: true, parentId: true },
+    orderBy: { number: 'desc' }
+  });
 }
 
 /** Lightweight doc list for the "link a doc" picker. */

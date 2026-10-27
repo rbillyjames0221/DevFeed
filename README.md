@@ -29,102 +29,180 @@
   <a href="docs/promo/devfeed-promo-story.mp4"><img src="docs/promo/story-poster.png" width="800" alt="Too many projects? Watch DevFeed's workspace walkthrough with music and introductions to every feature." /></a>
 </p>
 
-DevFeed is a self-hosted developer workspace that connects project work, Git activity, databases, APIs, documentation, and deployments in one project context.
+DevFeed is a self-hosted developer workspace that connects project work, Git activity, databases, APIs, documentation, and deployments in one unified dashboard.
 
-## Current MVP
+---
 
-- Next.js 16 and React 19
-- TypeScript and Tailwind CSS 4
-- shadcn/ui dashboard shell
-- GitHub and GitLab personal access token login
-- Encrypted provider credentials and database-backed HttpOnly sessions
-- PostgreSQL-backed projects and live dashboard counts
-- Login throttling and self-hosted GitLab host allowlisting
-- Theme support and production Dockerfiles
-- Docker Compose with PostgreSQL and Redis
+## Quickstart & Local Setup
 
-## Tech stack
-
-See [docs/tech-stack.md](docs/tech-stack.md) for every framework, library and service DevFeed uses.
-
-## Development
+### 1. Clone & Install
 
 ```bash
-bun install
+git clone https://github.com/rbillyjames0221/DevFeed.git
+cd DevFeed
+bun install # or npm install
 cp env.example.txt .env
-# Set both database URLs and POSTGRES_PASSWORD, then generate DEVFEED_ENCRYPTION_KEY with:
-# openssl rand -base64 32
-docker compose up -d postgres redis
-bun run db:deploy
-bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+---
 
-## Checks
+### 2. Set Up Local PostgreSQL (Native)
+
+DevFeed connects directly to your local PostgreSQL installation (default port `5432`):
+
+1. **Create the database**:
+   ```sql
+   CREATE DATABASE devfeed;
+   ```
+   *(Or run via command line: `psql -U postgres -c "CREATE DATABASE devfeed;"`)*
+
+2. **Configure your `.env`**:
+   ```env
+   DATABASE_URL="postgresql://postgres@127.0.0.1:5432/devfeed"
+   DATABASE_URL_UNPOOLED="postgresql://postgres@127.0.0.1:5432/devfeed"
+   ```
+   *(If your local `postgres` user requires a password, use `postgresql://postgres:<your_password>@127.0.0.1:5432/devfeed`)*
+
+3. **Generate Encryption Key & Run Migrations**:
+   DevFeed requires a 32-byte Base64 encryption key to secure credentials:
+   ```bash
+   # Generate key (macOS / Linux / Git Bash)
+   openssl rand -base64 32
+
+   # Or via Node.js (Windows PowerShell / Command Prompt)
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+   ```
+   Save the key in `.env`:
+   ```env
+   DEVFEED_ENCRYPTION_KEY=your_generated_base64_key
+   ```
+   Then apply all migrations:
+   ```bash
+   bun run db:deploy # or npx prisma migrate deploy
+   ```
+
+*(Optional: If you prefer Docker over native PostgreSQL, you can run `docker compose up -d postgres redis` instead).*
+
+---
+
+### 3. Start the Development Server
 
 ```bash
-bun run test
-bun run test:db
-bun run lint:strict
-bun run typecheck
-bun run build
+bun run dev # or npm run dev
 ```
 
-## Self-hosting
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-DevFeed ships as ready-made Docker images, `ghcr.io/rbillyjames0221/devfeed` and
-`ghcr.io/rbillyjames0221/devfeed-migrate`, with PostgreSQL and Redis in the Compose stack.
+---
+
+## Authentication & Sign-In Methods
+
+DevFeed supports two convenient local sign-in methods:
+
+### Method 1: Local Admin Login (Fastest, No External Service Needed)
+
+DevFeed has a built-in direct administrative login that works offline without any Git provider.
+
+1. Ensure admin credentials are set in your `.env` (or use the defaults):
+   ```env
+   DEVFEED_ADMIN_USERNAME=admin
+   DEVFEED_ADMIN_PASSWORD=admin
+   ```
+2. Navigate to [http://localhost:3000/login](http://localhost:3000/login).
+3. Click the **Admin** tab.
+4. Enter `admin` for both Username and Password to log in immediately.
+
+---
+
+### Method 2: GitHub Login (Classic Personal Access Token)
+
+To sync your GitHub repositories, issues, and activity, sign in using a GitHub Personal Access Token (PAT).
+
+> [!TIP]
+> **Use a Classic PAT rather than a Fine-Grained PAT.**  
+> Classic PATs have user-level access, allowing DevFeed to access your personal repos, organization repos, **and repositories where you are an external collaborator**. Fine-grained PATs are restricted to a single resource owner and cannot access collaborator repos owned by other personal accounts.
+
+#### 1. Generate Your Token Directly
+Click this direct link to open GitHub with the required scopes already selected:
+👉 [**Generate DevFeed Classic PAT on GitHub**](https://github.com/settings/tokens/new?description=DevFeed&scopes=repo,read:org,read:user)
+
+This automatically configures:
+- **Note**: `DevFeed`
+- **Required scopes**:
+  - `repo` (Full control of repositories, including private & collaborator repos)
+  - `read:org` (Read organization membership and team projects)
+  - `read:user` (Read user profile and email)
+
+Choose an expiration period, click **Generate token**, and copy the token (`ghp_...`).
+
+#### 2. Allow Account Bootstrap
+For your first sign-in, enable bootstrap mode in `.env` so your account is granted administrator rights:
+```env
+DEVFEED_ALLOW_BOOTSTRAP=true
+```
+
+#### 3. Sign In
+1. Go to [http://localhost:3000/login](http://localhost:3000/login).
+2. On the **GitHub** tab, paste your `ghp_...` token into the **Personal access token** input.
+3. Click **Sign in**.
+
+*(After the initial sign-in, you can set `DEVFEED_ALLOW_BOOTSTRAP=false` to prevent unauthorized admin registrations).*
+
+---
+
+## Self-Hosting with Docker
+
+DevFeed provides pre-built Docker images with PostgreSQL, Redis, and automatic migrations configured in `compose.yaml`:
 
 ```bash
-# 1. Get the code
-git clone https://github.com/rbillyjames0221/DevFeed
-cd devfeed
-# 2. Copy the example environment
+# 1. Clone repository
+git clone https://github.com/rbillyjames0221/DevFeed.git
+cd DevFeed
+
+# 2. Copy and configure .env
 cp env.example.txt .env
-# 3. Set a database password and encryption key, and let the first sign-in become administrator
-perl -pi -e "s/change-me/$(openssl rand -hex 16)/g; \
-  s|^DEVFEED_ENCRYPTION_KEY=.*|DEVFEED_ENCRYPTION_KEY=$(openssl rand -base64 32)|; \
-  s/^DEVFEED_ALLOW_BOOTSTRAP=.*/DEVFEED_ALLOW_BOOTSTRAP=true/" .env
-# 4. Start the stack
+
+# Set POSTGRES_PASSWORD, DEVFEED_ENCRYPTION_KEY, and DEVFEED_ALLOW_BOOTSTRAP=true in .env
+
+# 3. Pull images and launch
 docker compose pull
 docker compose up -d
 ```
 
-Step 3 fills the placeholders in `.env`: one random password for PostgreSQL and both database
-URLs (hex, so it needs no URL-encoding), a new `DEVFEED_ENCRYPTION_KEY` (back it up: losing it makes
-stored tokens unrecoverable), and `DEVFEED_ALLOW_BOOTSTRAP=true`. You can also edit `.env` by hand.
+Open [http://localhost:3000](http://localhost:3000) to complete the initial administrator setup.
 
-`docker compose pull` fetches the latest release images. To stay on a version, set
-`DEVFEED_VERSION=0.1.0` in `.env`; to build from source instead, run `docker compose up -d --build`.
+---
 
-Open [http://localhost:3000](http://localhost:3000) and sign in with a GitHub or GitLab token: the
-first person to sign in becomes the administrator. Then set `DEVFEED_ALLOW_BOOTSTRAP=false` in `.env`
-and run `docker compose up -d` again. New-user registration is disabled by default.
+## Tech Stack
 
-Use TLS in production so secure session cookies cannot travel over plaintext connections.
+See [docs/tech-stack.md](docs/tech-stack.md) for details on the architecture, dependencies, and services.
 
-Prefer a managed host? The **Deploy with Vercel** button above creates your own copy; you'll need a
-PostgreSQL database (Neon works well) and an encryption key. See [docs/deployment.md](docs/deployment.md#vercel).
+- **Framework**: Next.js 16 (App Router) & React 19
+- **Database**: PostgreSQL with Prisma ORM
+- **Cache & Queues**: Redis
+- **Styling**: Tailwind CSS v4 & shadcn/ui
+- **Icons**: Tabler Icons via `@/components/icons`
 
-## Roadmap
+---
 
-DevFeed is young, and the direction is open to discussion. Things we'd like to do next:
+## Checks & Quality
 
-- Published Docker images for every release
-- A public demo instance
-- More interface languages beyond English and Filipino
-- Better mobile layouts across the workspace
-- Notifications for mentions, assignments and failed pipelines
+```bash
+bun run test         # Core invariants and documentation checks
+bun run test:db      # Database connectivity check
+bun run lint:strict  # OxLint zero-warning check
+bun run typecheck    # TypeScript compiler check
+bun run build        # Production build verification
+```
 
-Have an idea or want to pick one up? Start a thread in [Discussions](https://github.com/rbillyjames0221/DevFeed/discussions) or look for issues labelled [`good first issue`](https://github.com/rbillyjames0221/DevFeed/labels/good%20first%20issue).
+---
 
 ## Contributing
 
-Contributions are welcome! Fork the repository, make your change on a branch in your fork, and open a pull request against `main`. [CONTRIBUTING.md](CONTRIBUTING.md) has the details. Questions are best asked in [Discussions](https://github.com/rbillyjames0221/DevFeed/discussions).
+Contributions are welcome! Fork the repository, create a branch for your feature, and open a pull request against `main`. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) for guidelines.
 
-Found a security problem? Please report it privately; see [SECURITY.md](SECURITY.md). Everyone taking part is expected to follow the [code of conduct](CODE_OF_CONDUCT.md).
+---
 
 ## License
 
-DevFeed is released under the [MIT License](LICENSE). It began from the MIT-licensed [DevOne](https://github.com/imnotseanwtf/DevOne) by Sean Gulliver Doctora, which itself began from the MIT-licensed [Next Shadcn Dashboard Starter](https://github.com/Kiranism/next-shadcn-dashboard-starter).
+DevFeed is released under the [MIT License](LICENSE).

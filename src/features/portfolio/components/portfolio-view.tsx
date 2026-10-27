@@ -1,13 +1,13 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useState } from 'react';
+import { GenerateDocReportModal } from '@/features/portfolio/components/generate-doc-report-modal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icons } from '@/components/icons';
-import { generateWeeklyReportAction } from '@/features/reports/actions';
 import type { ProjectHealthSummary } from '@/features/portfolio/service';
 import { toast } from 'sonner';
 
@@ -20,24 +20,11 @@ export function PortfolioView({
   projects,
   canGenerateReports
 }: PortfolioViewProps) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [reportProject, setReportProject] = useState<ProjectHealthSummary | null>(null);
 
   const onTrackCount = projects.filter((p) => p.health === 'ON_TRACK').length;
   const atRiskCount = projects.filter((p) => p.health === 'AT_RISK').length;
   const lateCount = projects.filter((p) => p.health === 'LATE').length;
-
-  const handleGenerateReport = (projectId: string, projectName: string) => {
-    startTransition(async () => {
-      const res = await generateWeeklyReportAction({ projectId });
-      if (res.ok) {
-        toast.success(`Generated status report for ${projectName}`);
-        router.push(`/projects/${projectId}/docs`);
-      } else {
-        toast.error(res.error || 'Failed to generate report');
-      }
-    });
-  };
 
   return (
     <div className='space-y-6'>
@@ -194,9 +181,8 @@ export function PortfolioView({
                             <Button
                               size='sm'
                               variant='outline'
-                              disabled={pending}
-                              onClick={() => handleGenerateReport(p.id, p.name)}
-                              title='Generate Weekly Markdown Report in Docs'
+                              onClick={() => setReportProject(p)}
+                              title='Configure and generate status report in Project Docs'
                             >
                               <Icons.page className='mr-1 size-3.5' /> Report
                             </Button>
@@ -216,6 +202,12 @@ export function PortfolioView({
           </div>
         </CardContent>
       </Card>
+
+      <GenerateDocReportModal
+        project={reportProject}
+        open={reportProject !== null}
+        onOpenChange={(open) => !open && setReportProject(null)}
+      />
     </div>
   );
 }

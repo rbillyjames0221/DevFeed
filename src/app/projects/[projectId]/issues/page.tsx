@@ -8,6 +8,7 @@ import {
   listBoardColumns,
   listBoards,
   listArchivedIssues,
+  listCandidateParents,
   listDocsForLinking,
   listIssueFieldOptions,
   listIssues
@@ -22,7 +23,7 @@ export const metadata: Metadata = { title: 'Board' };
 
 interface IssuesPageProps {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ board?: string | string[] }>;
+  searchParams: Promise<{ board?: string | string[]; issue?: string | string[] }>;
 }
 
 export default async function IssuesPage({ params, searchParams }: IssuesPageProps) {
@@ -34,7 +35,8 @@ export default async function IssuesPage({ params, searchParams }: IssuesPagePro
   if (!activeProject) notFound();
 
   const boards = await listBoards(user.id, activeProject.id);
-  const { board: requestedBoard } = await searchParams;
+  const { board: requestedBoard, issue: requestedIssue } = await searchParams;
+  const initialSelectedIssueId = typeof requestedIssue === 'string' ? requestedIssue : undefined;
   const activeBoard =
     typeof requestedBoard === 'string'
       ? boards.find((board) => board.id === requestedBoard)
@@ -51,6 +53,7 @@ export default async function IssuesPage({ params, searchParams }: IssuesPagePro
 
   const [
     issues,
+    candidateParents,
     members,
     collaborators,
     columns,
@@ -61,6 +64,7 @@ export default async function IssuesPage({ params, searchParams }: IssuesPagePro
     archived
   ] = await Promise.all([
     listIssues(user.id, activeProject.id, activeBoard.id),
+    listCandidateParents(user.id, activeProject.id),
     listProjectMembers(user.id, activeProject.id).catch(() => []),
     listAssignableCollaborators(user.id, activeProject.id).catch(() => []),
     listBoardColumns(user.id, activeBoard.id),
@@ -116,8 +120,13 @@ export default async function IssuesPage({ params, searchParams }: IssuesPagePro
           commentCount: issue.commentCount,
           linkedDocs: issue.linkedDocs,
           linkedDrawings: issue.linkedDrawings,
-          position: issue.position
+          position: issue.position,
+          parentId: issue.parentId ?? null,
+          parent: issue.parent ?? null,
+          subTasks: issue.subTasks ?? []
         }))}
+        candidateParents={candidateParents}
+        initialSelectedIssueId={initialSelectedIssueId}
         availableDocs={availableDocs}
         availableDrawings={availableDrawings}
         archived={archived.map((issue) => ({

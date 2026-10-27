@@ -162,11 +162,17 @@ function GitSubForm({
         </>
       )}
 
-      {oauthProviders.length === 0 && (
-        <div className='bg-muted/50 rounded-lg border p-3 text-xs leading-relaxed text-muted-foreground'>
-          Register or sign in with your GitHub Personal Access Token (<code className='text-foreground font-mono'>repo</code>, <code className='text-foreground font-mono'>read:org</code>, <code className='text-foreground font-mono'>read:user</code>). Configure GitHub OAuth in <code className='text-foreground font-mono'>.env</code> for one-click OAuth button.
-        </div>
-      )}
+      <div className='bg-muted/50 rounded-lg border p-3 text-xs leading-relaxed text-muted-foreground'>
+        Sign in with your GitHub Personal Access Token. Need a token?{' '}
+        <a
+          href='https://github.com/settings/tokens/new?description=DevFeed&scopes=repo,read:org,read:user'
+          target='_blank'
+          rel='noopener noreferrer'
+          className='text-primary font-medium underline underline-offset-4 hover:opacity-80'
+        >
+          Generate a Classic PAT with pre-filled scopes &rarr;
+        </a>
+      </div>
 
       <form
         className='space-y-4'
@@ -209,19 +215,28 @@ function GitSubForm({
             }
           </form.Subscribe>
 
-          <form.AppField
-            name='token'
-            children={(field) => (
-              <field.TextField
-                label='Personal access token'
-                type='password'
-                placeholder='ghp_...'
-                autoComplete='off'
-                spellCheck={false}
-                required
+          <form.Subscribe selector={(state) => state.values.provider}>
+            {(provider) => (
+              <form.AppField
+                name='token'
+                children={(field) => (
+                  <field.TextField
+                    label='Personal access token'
+                    type='password'
+                    placeholder={provider === 'github' ? 'ghp_...' : 'glpat-...'}
+                    autoComplete='off'
+                    spellCheck={false}
+                    description={
+                      provider === 'github'
+                        ? 'GitHub Classic PAT with repo, read:org, and read:user scopes.'
+                        : 'GitLab personal access token with read_api and read_user scopes.'
+                    }
+                    required
+                  />
+                )}
               />
             )}
-          />
+          </form.Subscribe>
 
           {error && (
             <Alert variant='destructive'>

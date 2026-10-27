@@ -206,11 +206,13 @@ export async function getProjectDashboard(userId: string, projectId: string) {
         issueKey: true,
         title: true,
         status: true,
+        priority: true,
         boardId: true,
         assigneeId: true,
         targetDate: true,
         updatedAt: true,
-        assignee: { select: { username: true } }
+        createdAt: true,
+        assignee: { select: { username: true, name: true, avatarUrl: true } }
       },
       take: 5000
     }),
@@ -231,7 +233,10 @@ export async function getProjectDashboard(userId: string, projectId: string) {
     }),
     db.projectMember.findMany({
       where: { projectId },
-      select: { user: { select: { id: true, username: true, name: true } } }
+      select: {
+        role: true,
+        user: { select: { id: true, username: true, name: true, avatarUrl: true } }
+      }
     })
   ]);
 
@@ -411,7 +416,101 @@ export async function getProjectDashboard(userId: string, projectId: string) {
       idleDays: Math.floor((now - issue.updatedAt.getTime()) / DAY_MS)
     }));
 
+  // Overall & Individual Progress Report Data
+  const memberReportStats = members.map(({ role, user }) => {
+    const memberIssues = openIssues.filter((issue) => issue.assigneeId === user.id);
+    const memberOpen = memberIssues.filter((issue) => !isDone(issue.boardId, issue.status));
+    const memberDone = memberIssues.filter((issue) => isDone(issue.boardId, issue.status));
+    const memberInProgress = memberOpen.filter((issue) => issue.status !== 'BACKLOG');
+    const memberBacklog = memberOpen.filter((issue) => issue.status === 'BACKLOG');
+    const memberOverdue = memberOpen.filter(
+      (issue) => issue.targetDate && issue.targetDate.getTime() < todayMs
+    );
+    const completionRate =
+      memberIssues.length > 0 ? Math.round((memberDone.length / memberIssues.length) * 100) : 0;
+
+    return {
+      userId: user.id,
+      username: user.username,
+      displayName: user.name || user.username,
+      avatarUrl: user.avatarUrl ?? null,
+      role,
+      totalAssigned: memberIssues.length,
+      doneCount: memberDone.length,
+      inProgressCount: memberInProgress.length,
+      backlogCount: memberBacklog.length,
+      overdueCount: memberOverdue.length,
+      completionRate,
+      tasks: memberIssues.map((issue) => ({
+        id: issue.id,
+        issueKey: issue.issueKey,
+        title: issue.title,
+        status: issue.status,
+        priority: issue.priority,
+        boardId: issue.boardId,
+        isDone: isDone(issue.boardId, issue.status),
+        isOverdue: Boolean(
+          !isDone(issue.boardId, issue.status) &&
+            issue.targetDate &&
+            issue.targetDate.getTime() < todayMs
+        ),
+        targetDate: issue.targetDate ? issue.targetDate.toISOString().slice(0, 10) : null
+      }))
+    };
+  });
+
+  const unassignedIssues = openIssues.filter((issue) => issue.assigneeId === null);
+  const unassignedOpen = unassignedIssues.filter((issue) => !isDone(issue.boardId, issue.status));
+  const unassignedDone = unassignedIssues.filter((issue) => isDone(issue.boardId, issue.status));
+
+  const totalTasks = openIssues.length;
+  const totalDone = openIssues.filter((i) => isDone(i.boardId, i.status)).length;
+  const totalInProgress = open.filter((i) => i.status !== 'BACKLOG').length;
+  const totalBacklog = open.filter((i) => i.status === 'BACKLOG').length;
+  const totalOverdue = open.filter((i) => i.targetDate && i.targetDate.getTime() < todayMs).length;
+  const overallCompletionRate = totalTasks > 0 ? Math.round((totalDone / totalTasks) * 100) : 0;
+
+  const projectReport = {
+    projectName: project.name,
+    projectDescription: project.description,
+    generatedAt: new Date().toISOString(),
+    overall: {
+      totalTasks,
+      totalDone,
+      totalInProgress,
+      totalBacklog,
+      totalOverdue,
+      overallCompletionRate,
+      leadTimeDays,
+      doneThisWeek,
+      createdThisWeek,
+      boards: boardProgress
+    },
+    members: memberReportStats,
+    unassigned: {
+      total: unassignedIssues.length,
+      open: unassignedOpen.length,
+      done: unassignedDone.length,
+      tasks: unassignedIssues.map((issue) => ({
+        id: issue.id,
+        issueKey: issue.issueKey,
+        title: issue.title,
+        status: issue.status,
+        priority: issue.priority,
+        boardId: issue.boardId,
+        isDone: isDone(issue.boardId, issue.status),
+        isOverdue: Boolean(
+          !isDone(issue.boardId, issue.status) &&
+            issue.targetDate &&
+            issue.targetDate.getTime() < todayMs
+        ),
+        targetDate: issue.targetDate ? issue.targetDate.toISOString().slice(0, 10) : null
+      }))
+    }
+  };
+
   return {
+    report: projectReport,
     project,
     members: members.length,
     openTasks,

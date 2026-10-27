@@ -2,6 +2,14 @@
 
 import { ProjectRole } from '@/features/projects/roles';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -21,6 +29,7 @@ import { Icons } from '@/components/icons';
 import { leaveProjectAction } from '@/features/project-settings/actions';
 import {
   addProjectMemberAction,
+  updateMemberDisplayNameAction,
   removeProjectMemberAction,
   updateProjectMemberRoleAction
 } from '@/features/projects/actions';
@@ -77,6 +86,8 @@ export function MembersSettings({
   const [username, setUsername] = useState('');
   const [role, setRole] = useState<ProjectRole>(ProjectRole.MEMBER);
   const [confirm, setConfirm] = useState<Confirm>(null);
+  const [editingMember, setEditingMember] = useState<SettingsMember | null>(null);
+  const [editingDisplayName, setEditingDisplayName] = useState('');
   const dateFormat = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' });
 
   const run = (action: () => Promise<{ ok: boolean; error?: string }>, success?: string) =>
@@ -110,16 +121,33 @@ export function MembersSettings({
                     <AvatarFallback>{member.username.slice(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div className='min-w-0 flex-1'>
-                    <p className='truncate text-sm font-medium'>
-                      {member.name ?? member.username}{' '}
+                    <div className='flex items-center gap-1.5'>
+                      <p className='truncate text-sm font-medium'>
+                        {member.name || member.username}
+                      </p>
                       {isSelf && (
-                        <Badge variant='outline' className='ml-1'>
+                        <Badge variant='outline' className='ml-0.5 text-[10px]'>
                           {t('common.you')}
                         </Badge>
                       )}
-                    </p>
+                      {(isOwner || isSelf) && (
+                        <Button
+                          variant='ghost'
+                          size='icon-xs'
+                          className='text-muted-foreground hover:text-foreground size-5 shrink-0'
+                          title='Edit display name'
+                          aria-label='Edit display name'
+                          onClick={() => {
+                            setEditingMember(member);
+                            setEditingDisplayName(member.name ?? '');
+                          }}
+                        >
+                          <Icons.edit className='size-3' />
+                        </Button>
+                      )}
+                    </div>
                     <p className='text-muted-foreground truncate text-xs'>
-                      @{member.username} Â·{' '}
+                      @{member.username} ·{' '}
                       {t('projectSettings.members.joined', {
                         date: dateFormat.format(member.joinedAt)
                       })}
@@ -227,7 +255,7 @@ export function MembersSettings({
         </Button>
       </div>
 
-      <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
+      <AlertDialog open={confirm !== null} onOpenChange={(open: boolean) => !open && setConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -269,6 +297,71 @@ export function MembersSettings({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={editingMember !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingMember(null);
+            setEditingDisplayName('');
+          }
+        }}
+      >
+        <DialogContent className='sm:max-w-md'>
+          <DialogHeader>
+            <DialogTitle>Edit display name</DialogTitle>
+            <DialogDescription>
+              Set how @{editingMember?.username} appears on boards, tickets, and reports. Leave blank to default to their username.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!editingMember) return;
+              run(
+                () =>
+                  updateMemberDisplayNameAction({
+                    projectId,
+                    memberUserId: editingMember.userId,
+                    displayName: editingDisplayName
+                  }),
+                'Display name updated'
+              );
+              setEditingMember(null);
+            }}
+            className='space-y-4 pt-2'
+          >
+            <div className='space-y-1.5'>
+              <label htmlFor='display-name-input' className='text-xs font-medium'>
+                Display name
+              </label>
+              <Input
+                id='display-name-input'
+                placeholder={editingMember ? `@${editingMember.username}` : 'Display name'}
+                value={editingDisplayName}
+                onChange={(e) => setEditingDisplayName(e.target.value)}
+                maxLength={60}
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => {
+                  setEditingMember(null);
+                  setEditingDisplayName('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type='submit' disabled={pending}>
+                Save name
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -102,7 +102,11 @@ const createIssueSchema = z.object({
   priority: z.string().min(1).default('MEDIUM'),
   estimate: z.coerce.number().min(0).max(1000).nullish(),
   teamId: z.string().min(1).nullish(),
-  parentId: z.string().min(1).nullish(),
+  parentId: z
+    .string()
+    .trim()
+    .nullish()
+    .transform((val) => (val && val.length > 0 ? val : null)),
   labels: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
   assigneeId: z.string().min(1).nullish(),
   sprintId: z.string().min(1).nullish(),
@@ -457,7 +461,11 @@ const updateSchema = z.object({
   priority: z.string().min(1).optional(),
   estimate: z.coerce.number().min(0).max(1000).nullish(),
   teamId: z.string().min(1).nullish(),
-  parentId: z.string().min(1).nullish(),
+  parentId: z
+    .string()
+    .trim()
+    .nullish()
+    .transform((val) => (val && val.length > 0 ? val : null)),
   labels: z.array(z.string().trim().min(1).max(30)).max(20).optional(),
   assigneeId: z.string().min(1).nullish(),
   sprintId: z.string().min(1).nullish(),

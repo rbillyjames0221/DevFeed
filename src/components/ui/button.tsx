@@ -50,8 +50,14 @@ function Button({
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
   const isNative =
     nativeButton ??
-    (props.render && React.isValidElement(props.render) && props.render.type !== 'button'
-      ? false
+    (props.render && React.isValidElement(props.render)
+      ? typeof props.render.type === 'string'
+        ? props.render.type !== 'button'
+          ? false
+          : undefined
+        : Boolean((props.render.props as { href?: unknown } | undefined)?.href)
+          ? false
+          : undefined
       : undefined);
 
   return (

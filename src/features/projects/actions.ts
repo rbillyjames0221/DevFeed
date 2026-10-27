@@ -196,3 +196,51 @@ export async function getProjectPanelInfoAction(projectId: unknown): Promise<Pro
     return fail(error, 'Could not load the project') as { ok: false; error: string };
   }
 }
+
+const displayNameSchema = z.object({
+  projectId: z.string().min(1),
+  memberUserId: z.string().min(1),
+  displayName: z.string().max(60)
+});
+
+export async function updateMemberDisplayNameAction(input: unknown): Promise<ProjectActionResult> {
+  const user = await requireUser();
+  const parsed = displayNameSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid display name' };
+  const { projectId, memberUserId, displayName } = parsed.data;
+
+  const callerRole = await getPrisma().projectMember.findFirst({
+    where: { projectId, userId: user.id },
+    select: { role: true }
+  });
+  if (!callerRole) return { ok: false, error: 'Not authorized' };
+
+  const canUpdate =
+    user.id === memberUserId ||
+    callerRole.role === ProjectRole.OWNER ||
+    callerRole.role === ProjectRole.PROJECT_MANAGER ||
+    callerRole.role === ProjectRole.LEAD;
+  if (!canUpdate) return { ok: false, error: 'Insufficient permissions to update display name' };
+
+  try {
+    const trimmed = displayName.trim();
+    await getPrisma().user.update({
+      where: { id: memberUserId },
+      data: { name: trimmed || null }
+    });
+
+    await recordAudit({
+      actorId: user.id,
+      projectId,
+      action: 'project.member.display_name',
+      target: await usernameOf(memberUserId),
+      details: { displayName: trimmed || null }
+    });
+
+    refreshProjects();
+    revalidatePath(`/projects/${projectId}/settings`);
+    return { ok: true };
+  } catch (error) {
+    return fail(error, 'Could not update display name');
+  }
+}

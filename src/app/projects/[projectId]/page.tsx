@@ -21,6 +21,7 @@ import {
   DashboardCollaborators,
   type DashboardMember
 } from '@/features/projects/components/dashboard-collaborators';
+import { ProjectReportModal } from '@/features/projects/components/project-report-modal';
 import { ThroughputChart } from '@/features/projects/components/throughput-chart';
 import { getProjectDashboard, type ProjectDashboard } from '@/features/projects/dashboard';
 import { ENVIRONMENT_LABELS } from '@/features/resources/labels';
@@ -101,10 +102,13 @@ export default async function ProjectDashboardPage({
         dashboard.project.description ?? 'What needs attention across tasks, code and environments.'
       }
       pageHeaderAction={
-        <Link href={`${base}/issues`} className={buttonVariants({ size: 'sm' })}>
-          <Icons.kanban aria-hidden='true' />
-          Open board
-        </Link>
+        <div className='flex items-center gap-2'>
+          <ProjectReportModal report={dashboard.report} projectId={projectId} />
+          <Link href={`${base}/issues`} className={buttonVariants({ size: 'sm' })}>
+            <Icons.kanban aria-hidden='true' />
+            Open board
+          </Link>
+        </div>
       }
     >
       <div className='space-y-4'>

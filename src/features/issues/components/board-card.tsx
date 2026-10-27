@@ -259,29 +259,32 @@ export function IssueCard({
           dragging && 'opacity-40'
         )}
       >
-        <div className='text-muted-foreground/90 mb-1.5 font-mono text-[10px]'>
-          {issue.issueKey}
-        </div>
-
-        <div className='absolute top-2.5 right-2.5'>
+        <div className='mb-2 flex items-center justify-between gap-2'>
+          <span className='text-muted-foreground/90 font-mono text-[10px]'>
+            {issue.issueKey}
+          </span>
           {issue.assignee ? (
             <span
-              className='bg-muted text-foreground/80 flex size-5 items-center justify-center rounded-full border text-[9px] font-semibold'
-              title={`Assigned to ${issue.assigneeName ?? issue.assignee} (@${issue.assignee})`}
+              className='bg-muted/80 text-foreground/90 inline-flex max-w-[140px] shrink-0 items-center gap-1.5 rounded-full border border-border/80 py-0.5 pr-2 pl-0.5 text-[10px] font-medium shadow-2xs'
+              title={`Assigned to ${issue.assigneeName ? `${issue.assigneeName} (@${issue.assignee})` : `@${issue.assignee}`}`}
             >
-              {initials(issue.assignee, issue.assigneeName)}
+              <span className='bg-background text-foreground/80 flex size-4 items-center justify-center rounded-full border text-[8px] font-semibold'>
+                {initials(issue.assignee, issue.assigneeName)}
+              </span>
+              <span className='truncate font-mono'>@{issue.assignee}</span>
             </span>
           ) : (
             <span
-              className='border-border text-muted-foreground flex size-5 items-center justify-center rounded-full border border-dashed text-[10px]'
+              className='border-border/70 text-muted-foreground/75 inline-flex items-center gap-1 rounded-full border border-dashed px-1.5 py-0.5 text-[9px]'
               title='Unassigned'
             >
-              ?
+              <span className='size-1.5 rounded-full bg-muted-foreground/40' />
+              Unassigned
             </span>
           )}
         </div>
 
-        <p className='text-foreground/95 mb-2.5 line-clamp-3 pr-6 text-[15px] leading-5 font-medium break-words'>
+        <p className='text-foreground/95 mb-2.5 line-clamp-3 text-[15px] leading-5 font-medium break-words'>
           {issue.title}
         </p>
 

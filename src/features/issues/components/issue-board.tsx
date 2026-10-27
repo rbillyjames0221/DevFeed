@@ -103,6 +103,14 @@ import { BoardListView } from '@/features/issues/components/board-list-view';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 
+export interface CandidateParent {
+  id: string;
+  issueKey: string;
+  title: string;
+  boardId: string;
+  parentId?: string | null;
+}
+
 export interface BoardIssue {
   id: string;
   issueKey: string;
@@ -127,6 +135,15 @@ export interface BoardIssue {
   linkedDocs?: PickerDoc[];
   linkedDrawings?: PickerDrawing[];
   position?: number;
+  parentId?: string | null;
+  parent?: {
+    id: string;
+    issueKey: string;
+    title: string;
+    boardId: string;
+    subTasks?: { id: string; issueKey: string; title: string; boardId: string }[];
+  } | null;
+  subTasks?: { id: string; issueKey: string; title: string; boardId: string }[];
 }
 
 interface IssueBoardProps {
@@ -135,6 +152,8 @@ interface IssueBoardProps {
   boards: { id: string; name: string }[];
   projects: { id: string; name: string }[];
   issues: BoardIssue[];
+  candidateParents?: CandidateParent[];
+  initialSelectedIssueId?: string;
   members: { id: string; username: string; name: string | null }[];
   columns: { id: string; name: string; color: string | null; icon: string | null }[];
   types: { id: string; name: string; color: string | null }[];
@@ -153,6 +172,7 @@ export interface IssueEdits {
   assigneeId: string | null;
   /** YYYY-MM-DD, or null for none. */
   targetDate: string | null;
+  parentId?: string | null;
 }
 
 const TYPE_DOT: Record<string, string> = {
@@ -243,6 +263,8 @@ export function IssueBoard({
   boards,
   projects,
   issues,
+  candidateParents,
+  initialSelectedIssueId,
   members,
   columns,
   types,
@@ -272,7 +294,18 @@ export function IssueBoard({
   const [createTargetDate, setCreateTargetDate] = useState<string | null>(null);
   /** 'ALL', 'NONE' (unassigned), or a member's id. */
   const [assigneeFilter, setAssigneeFilter] = useState('ALL');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedIssueId ?? null);
+
+  const allCandidateParents = useMemo<CandidateParent[]>(() => {
+    if (candidateParents && candidateParents.length > 0) return candidateParents;
+    return issues.map((i) => ({
+      id: i.id,
+      issueKey: i.issueKey,
+      title: i.title,
+      boardId,
+      parentId: i.parentId
+    }));
+  }, [candidateParents, issues, boardId]);
   const [createOpen, setCreateOpen] = useState(false);
   const [createStatus, setCreateStatus] = useState('TODO');
   const [boardDialogOpen, setBoardDialogOpen] = useState(false);
@@ -625,13 +658,17 @@ export function IssueBoard({
     });
   }
 
-  function saveEdits(issueId: string, data: IssueEdits) {
+  function saveEdits(issueId: string, data: IssueEdits): Promise<boolean> {
     const current = optimistic ?? issues;
     const existing = current.find((entry) => entry.id === issueId);
-    if (!existing) return;
+    if (!existing) return Promise.resolve(false);
 
     const assignee = data.assigneeId
       ? members.find((member) => member.id === data.assigneeId)
+      : null;
+
+    const parentCandidate = data.parentId
+      ? allCandidateParents.find((p) => p.id === data.parentId)
       : null;
 
     setError(undefined);
@@ -646,6 +683,17 @@ export function IssueBoard({
               priority: data.priority,
               assigneeId: data.assigneeId,
               targetDate: data.targetDate,
+              parentId: data.parentId ?? null,
+              parent: data.parentId
+                ? parentCandidate
+                  ? {
+                      id: parentCandidate.id,
+                      issueKey: parentCandidate.issueKey,
+                      title: parentCandidate.title,
+                      boardId: parentCandidate.boardId
+                    }
+                  : entry.parent
+                : null,
               assignee: assignee?.username ?? (data.assigneeId ? entry.assignee : null),
               assigneeName: assignee?.name ?? (data.assigneeId ? entry.assigneeName : null)
             }
@@ -653,14 +701,18 @@ export function IssueBoard({
       )
     );
 
-    startSaveTransition(async () => {
-      const result = await updateIssueAction({ issueId, ...data });
-      if (!result.ok) {
-        revert();
-        setError(result.error ?? 'Could not update the task');
-        return;
-      }
-      router.refresh();
+    return new Promise((resolve) => {
+      startSaveTransition(async () => {
+        const result = await updateIssueAction({ issueId, ...data });
+        if (!result.ok) {
+          revert();
+          setError(result.error ?? 'Could not update the task');
+          resolve(false);
+          return;
+        }
+        router.refresh();
+        resolve(true);
+      });
     });
   }
 
@@ -1240,7 +1292,10 @@ export function IssueBoard({
           <IssueModal
             key={selected.id}
             projectId={projectId}
+            boardId={boardId}
             issue={selected}
+            issues={optimistic ?? issues}
+            candidateParents={allCandidateParents}
             members={members}
             types={types}
             priorities={priorities}
@@ -1249,6 +1304,7 @@ export function IssueBoard({
             availableDrawings={availableDrawings}
             disabled={savePending}
             onClose={() => setSelectedId(null)}
+            onSelectIssue={(targetId) => setSelectedId(targetId)}
             onSave={(data) => saveEdits(selected.id, data)}
             onMove={(status) => move(selected.id, status, null)}
             onDelete={() => archiveTask(selected.id)}
@@ -1262,6 +1318,7 @@ export function IssueBoard({
             types={types}
             priorities={priorities}
             members={members}
+            candidateParents={allCandidateParents}
             statuses={['BACKLOG', ...columns.map((c) => c.name)]}
             initialStatus={createStatus}
             initialTargetDate={createTargetDate}
@@ -1653,7 +1710,10 @@ function ManageOptionsDialog({
 
 function IssueModal({
   projectId,
+  boardId,
   issue,
+  issues,
+  candidateParents,
   members,
   types,
   priorities,
@@ -1662,12 +1722,16 @@ function IssueModal({
   availableDrawings,
   disabled,
   onClose,
+  onSelectIssue,
   onSave,
   onMove,
   onDelete
 }: {
   projectId: string;
+  boardId: string;
   issue: BoardIssue;
+  issues: BoardIssue[];
+  candidateParents: CandidateParent[];
   members: { id: string; username: string; name: string | null }[];
   types: { id: string; name: string; color: string | null }[];
   priorities: { id: string; name: string; color: string | null }[];
@@ -1676,7 +1740,8 @@ function IssueModal({
   availableDrawings: PickerDrawing[];
   disabled: boolean;
   onClose: () => void;
-  onSave: (data: IssueEdits) => void;
+  onSelectIssue: (issueId: string) => void;
+  onSave: (data: IssueEdits) => Promise<boolean> | void;
   onMove: (status: string) => void;
   /** Moves the task to the archive. */
   onDelete: () => void;
@@ -1688,9 +1753,134 @@ function IssueModal({
   const [priority, setPriority] = useState(issue.priority);
   const [assigneeId, setAssigneeId] = useState(issue.assigneeId ?? '');
   const [targetDate, setTargetDate] = useState(issue.targetDate ?? '');
+  const [parentId, setParentId] = useState(issue.parentId ?? '');
   const [linkedDocs, setLinkedDocs] = useState(issue.linkedDocs ?? []);
   const [linkedDrawings, setLinkedDrawings] = useState(issue.linkedDrawings ?? []);
   const [drawingError, setDrawingError] = useState<string>();
+
+  const [pendingTarget, setPendingTarget] = useState<{
+    id: string;
+    boardId?: string;
+    issueKey?: string;
+  } | null>(null);
+  const [showConfirmRedirect, setShowConfirmRedirect] = useState(false);
+  const [isSavingAndRedirecting, setIsSavingAndRedirecting] = useState(false);
+
+  const descendantIds = useMemo(() => {
+    const allItems: { id: string; parentId?: string | null }[] = [
+      ...candidateParents,
+      ...issues.map((i) => ({ id: i.id, parentId: i.parentId }))
+    ];
+    const descendants = new Set<string>();
+    const queue = [issue.id];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const item of allItems) {
+        if (item.parentId === cur && !descendants.has(item.id)) {
+          descendants.add(item.id);
+          queue.push(item.id);
+        }
+      }
+    }
+    return descendants;
+  }, [issue.id, candidateParents, issues]);
+
+  const selectableParents = useMemo(() => {
+    return candidateParents.filter((p) => p.id !== issue.id && !descendantIds.has(p.id));
+  }, [candidateParents, issue.id, descendantIds]);
+
+  const effectiveParentId = parentId || null;
+  const parentInfo = useMemo(() => {
+    if (!effectiveParentId) return null;
+    const fromCandidate = candidateParents.find((p) => p.id === effectiveParentId);
+    if (fromCandidate) {
+      return {
+        id: fromCandidate.id,
+        issueKey: fromCandidate.issueKey,
+        title: fromCandidate.title,
+        boardId: fromCandidate.boardId
+      };
+    }
+    if (issue.parent && issue.parent.id === effectiveParentId) {
+      return {
+        id: issue.parent.id,
+        issueKey: issue.parent.issueKey,
+        title: issue.parent.title,
+        boardId: issue.parent.boardId
+      };
+    }
+    return null;
+  }, [effectiveParentId, candidateParents, issue.parent]);
+
+  const otherChildren = useMemo(() => {
+    if (!parentInfo) return [];
+    const map = new Map<string, { id: string; issueKey: string; title: string; boardId?: string }>();
+    if (issue.parent?.id === parentInfo.id && issue.parent.subTasks) {
+      for (const sub of issue.parent.subTasks) {
+        if (sub.id !== issue.id) {
+          map.set(sub.id, sub);
+        }
+      }
+    }
+    for (const item of candidateParents) {
+      if (item.parentId === parentInfo.id && item.id !== issue.id) {
+        map.set(item.id, {
+          id: item.id,
+          issueKey: item.issueKey,
+          title: item.title,
+          boardId: item.boardId
+        });
+      }
+    }
+    for (const item of issues) {
+      if (item.parentId === parentInfo.id && item.id !== issue.id) {
+        map.set(item.id, { id: item.id, issueKey: item.issueKey, title: item.title, boardId });
+      }
+    }
+    return Array.from(map.values());
+  }, [parentInfo, issue, candidateParents, issues, boardId]);
+
+  const childTasks = useMemo(() => {
+    const map = new Map<string, { id: string; issueKey: string; title: string; boardId?: string }>();
+    if (issue.subTasks) {
+      for (const sub of issue.subTasks) {
+        map.set(sub.id, sub);
+      }
+    }
+    for (const item of candidateParents) {
+      if (item.parentId === issue.id) {
+        map.set(item.id, {
+          id: item.id,
+          issueKey: item.issueKey,
+          title: item.title,
+          boardId: item.boardId
+        });
+      }
+    }
+    for (const item of issues) {
+      if (item.parentId === issue.id) {
+        map.set(item.id, { id: item.id, issueKey: item.issueKey, title: item.title, boardId });
+      }
+    }
+    return Array.from(map.values());
+  }, [issue, candidateParents, issues, boardId]);
+
+  function performRedirect(targetId: string, targetBoardId?: string) {
+    if (targetBoardId && targetBoardId !== boardId) {
+      router.push(`/projects/${projectId}/issues?board=${targetBoardId}&issue=${targetId}`);
+    } else {
+      onSelectIssue(targetId);
+    }
+  }
+
+  function handleNavigateToIssue(targetId: string, targetBoardId?: string, targetKey?: string) {
+    if (dirty) {
+      setPendingTarget({ id: targetId, boardId: targetBoardId, issueKey: targetKey });
+      setShowConfirmRedirect(true);
+    } else {
+      performRedirect(targetId, targetBoardId);
+    }
+  }
 
   function changeDrawingLink(drawing: PickerDrawing, link: boolean) {
     setDrawingError(undefined);
@@ -1755,7 +1945,8 @@ function IssueModal({
     type !== issue.type ||
     priority !== issue.priority ||
     (assigneeId || '') !== (issue.assigneeId ?? '') ||
-    targetDate !== (issue.targetDate ?? '');
+    targetDate !== (issue.targetDate ?? '') ||
+    (parentId || '') !== (issue.parentId ?? '');
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -1776,6 +1967,72 @@ function IssueModal({
             {(issue.commentCount ?? 0) > 0 ? ` · ${issue.commentCount} comments` : ''}
           </DialogDescription>
         </DialogHeader>
+
+        {parentInfo ? (
+          <div className='bg-muted/40 space-y-2 rounded-lg border p-3 text-xs'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <span className='text-muted-foreground shrink-0 font-semibold'>Parent:</span>
+              <button
+                type='button'
+                onClick={() =>
+                  handleNavigateToIssue(parentInfo.id, parentInfo.boardId, parentInfo.issueKey)
+                }
+                className='border-border/80 bg-background text-foreground hover:bg-accent hover:text-accent-foreground inline-flex max-w-full items-center gap-1.5 rounded-md border px-2.5 py-1 text-left text-xs font-medium transition-colors'
+              >
+                <span className='text-primary shrink-0 font-mono font-semibold'>
+                  {parentInfo.issueKey}
+                </span>
+                <span className='text-muted-foreground shrink-0'>·</span>
+                <span className='truncate'>{parentInfo.title}</span>
+              </button>
+            </div>
+            <div className='flex flex-wrap items-center gap-2'>
+              <span className='text-muted-foreground shrink-0 font-semibold'>Other Child:</span>
+              {otherChildren.length > 0 ? (
+                otherChildren.map((child) => (
+                  <button
+                    key={child.id}
+                    type='button'
+                    onClick={() =>
+                      handleNavigateToIssue(child.id, child.boardId, child.issueKey)
+                    }
+                    className='border-border/80 bg-background text-foreground hover:bg-accent hover:text-accent-foreground inline-flex max-w-full items-center gap-1.5 rounded-md border px-2.5 py-1 text-left text-xs font-medium transition-colors'
+                  >
+                    <span className='text-primary shrink-0 font-mono font-semibold'>
+                      {child.issueKey}
+                    </span>
+                    <span className='text-muted-foreground shrink-0'>·</span>
+                    <span className='truncate'>{child.title}</span>
+                  </button>
+                ))
+              ) : (
+                <span className='text-muted-foreground italic'>None</span>
+              )}
+            </div>
+          </div>
+        ) : childTasks.length > 0 ? (
+          <div className='bg-muted/40 space-y-2 rounded-lg border p-3 text-xs'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <span className='text-muted-foreground shrink-0 font-semibold'>Child tasks:</span>
+              {childTasks.map((child) => (
+                <button
+                  key={child.id}
+                  type='button'
+                  onClick={() =>
+                    handleNavigateToIssue(child.id, child.boardId, child.issueKey)
+                  }
+                  className='border-border/80 bg-background text-foreground hover:bg-accent hover:text-accent-foreground inline-flex max-w-full items-center gap-1.5 rounded-md border px-2.5 py-1 text-left text-xs font-medium transition-colors'
+                >
+                  <span className='text-primary shrink-0 font-mono font-semibold'>
+                    {child.issueKey}
+                  </span>
+                  <span className='text-muted-foreground shrink-0'>·</span>
+                  <span className='truncate'>{child.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className='grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]'>
           <div className='min-w-0 space-y-3'>
@@ -1931,6 +2188,43 @@ function IssueModal({
               </Combobox>
             </div>
 
+            <div className='space-y-2'>
+              <Label htmlFor='modal-parent'>Parent task</Label>
+              <Combobox
+                items={[
+                  { value: '', label: 'None (Root task)' },
+                  ...selectableParents.map((entry) => ({
+                    value: entry.id,
+                    label: `${entry.issueKey} · ${entry.title}`
+                  }))
+                ]}
+                value={parentId}
+                itemToStringLabel={(value) => {
+                  if (!value) return 'None (Root task)';
+                  const found = candidateParents.find((entry) => entry.id === value);
+                  return found ? `${found.issueKey} · ${found.title}` : 'None';
+                }}
+                onValueChange={(value) => setParentId(value ?? '')}
+              >
+                <ComboboxInput
+                  id='modal-parent'
+                  placeholder='Search tasks for parent…'
+                  disabled={disabled}
+                  className='w-full'
+                />
+                <ComboboxContent>
+                  <ComboboxEmpty>No tasks found</ComboboxEmpty>
+                  <ComboboxList>
+                    {(item: { value: string; label: string }) => (
+                      <ComboboxItem key={item.value || 'none'} value={item.value}>
+                        {item.label}
+                      </ComboboxItem>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+            </div>
+
             <div className='space-y-3'>
               <div className='space-y-2'>
                 <Label htmlFor='modal-status'>Status</Label>
@@ -1997,7 +2291,8 @@ function IssueModal({
                 type,
                 priority,
                 assigneeId: assigneeId || null,
-                targetDate: targetDate || null
+                targetDate: targetDate || null,
+                parentId: parentId || null
               });
               onClose();
             }}
@@ -2006,6 +2301,72 @@ function IssueModal({
           </Button>
         </div>
       </DialogContent>
+
+      <AlertDialog
+        open={showConfirmRedirect}
+        onOpenChange={(next) => !isSavingAndRedirecting && setShowConfirmRedirect(next)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes on this task. Would you like to save them or discard them before viewing {pendingTarget?.issueKey ? `task ${pendingTarget.issueKey}` : 'the task'}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className='flex-col-reverse sm:flex-row sm:justify-end gap-2'>
+            <AlertDialogCancel
+              disabled={isSavingAndRedirecting}
+              onClick={() => {
+                setShowConfirmRedirect(false);
+                setPendingTarget(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <Button
+              type='button'
+              variant='outline'
+              disabled={isSavingAndRedirecting}
+              onClick={() => {
+                const target = pendingTarget;
+                setShowConfirmRedirect(false);
+                setPendingTarget(null);
+                if (target) {
+                  performRedirect(target.id, target.boardId);
+                }
+              }}
+            >
+              Discard changes
+            </Button>
+            <Button
+              type='button'
+              disabled={isSavingAndRedirecting || title.trim().length < 3}
+              onClick={async () => {
+                if (!pendingTarget) return;
+                const target = pendingTarget;
+                setIsSavingAndRedirecting(true);
+                const saveResult = await onSave({
+                  title: title.trim(),
+                  description: description.trim(),
+                  type,
+                  priority,
+                  assigneeId: assigneeId || null,
+                  targetDate: targetDate || null,
+                  parentId: parentId || null
+                });
+                setIsSavingAndRedirecting(false);
+                if (saveResult !== false) {
+                  setShowConfirmRedirect(false);
+                  setPendingTarget(null);
+                  performRedirect(target.id, target.boardId);
+                }
+              }}
+            >
+              Save changes
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
@@ -2016,6 +2377,7 @@ function CreateIssueModal({
   types,
   priorities,
   members,
+  candidateParents,
   statuses,
   initialStatus,
   initialTargetDate,
@@ -2030,6 +2392,7 @@ function CreateIssueModal({
   types: { id: string; name: string; color: string | null }[];
   priorities: { id: string; name: string; color: string | null }[];
   members: { id: string; username: string; name: string | null }[];
+  candidateParents: CandidateParent[];
   statuses: string[];
   initialStatus: string;
   /** YYYY-MM-DD, when started from a calendar day. */
@@ -2046,6 +2409,7 @@ function CreateIssueModal({
   const [linkedDocs, setLinkedDocs] = useState<PickerDoc[]>([]);
   const [linkedDrawings, setLinkedDrawings] = useState<PickerDrawing[]>([]);
   const [assigneeId, setAssigneeId] = useState('');
+  const [parentId, setParentId] = useState('');
   const [targetDate, setTargetDate] = useState(initialTargetDate ?? '');
   const [title, setTitle] = useState('');
   const [branch, setBranch] = useState<BranchChoice | null>(null);
@@ -2074,6 +2438,7 @@ function CreateIssueModal({
                 status: String(data.get('status') ?? initialStatus),
                 priority: String(data.get('priority') ?? priorities[0]?.name ?? ''),
                 assigneeId: assigneeId || null,
+                parentId: parentId || null,
                 sprintId: null,
                 targetDate: targetDate || null,
                 branch,
@@ -2216,6 +2581,45 @@ function CreateIssueModal({
                     <ComboboxList>
                       {(item: { value: string; label: string }) => (
                         <ComboboxItem key={item.value || 'unassigned'} value={item.value}>
+                          {item.label}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+              </div>
+
+              <div className='space-y-2'>
+                <Label htmlFor='create-parent'>
+                  Parent task <span className='text-muted-foreground font-normal'>(optional)</span>
+                </Label>
+                <Combobox
+                  items={[
+                    { value: '', label: 'None (Root task)' },
+                    ...candidateParents.map((entry) => ({
+                      value: entry.id,
+                      label: `${entry.issueKey} · ${entry.title}`
+                    }))
+                  ]}
+                  value={parentId}
+                  itemToStringLabel={(value) => {
+                    if (!value) return 'None (Root task)';
+                    const found = candidateParents.find((entry) => entry.id === value);
+                    return found ? `${found.issueKey} · ${found.title}` : 'None';
+                  }}
+                  onValueChange={(value) => setParentId(value ?? '')}
+                >
+                  <ComboboxInput
+                    id='create-parent'
+                    placeholder='Search tasks for parent…'
+                    disabled={pending || disabled}
+                    className='w-full'
+                  />
+                  <ComboboxContent>
+                    <ComboboxEmpty>No tasks found</ComboboxEmpty>
+                    <ComboboxList>
+                      {(item: { value: string; label: string }) => (
+                        <ComboboxItem key={item.value || 'none'} value={item.value}>
                           {item.label}
                         </ComboboxItem>
                       )}

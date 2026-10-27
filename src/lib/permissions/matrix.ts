@@ -71,6 +71,7 @@ export const ROLE_PERMISSIONS: Record<ProjectRole, PermissionCapability[]> = {
     'terminal.connect',
     'analytics.personal',
     'analytics.team',
+    'report.generate',
     'audit.view'
   ],
   [ProjectRole.MEMBER]: [

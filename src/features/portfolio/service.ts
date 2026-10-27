@@ -1,5 +1,12 @@
 import { getPrisma } from '@/lib/db/prisma';
 
+export interface ProjectMemberSummary {
+  id: string;
+  username: string;
+  name: string | null;
+  role: string;
+}
+
 export interface ProjectHealthSummary {
   id: string;
   name: string;
@@ -16,6 +23,7 @@ export interface ProjectHealthSummary {
     name: string;
     committedPoints: number | null;
   } | null;
+  members: ProjectMemberSummary[];
 }
 
 export async function getPortfolioOverview(userId: string): Promise<ProjectHealthSummary[]> {
@@ -40,6 +48,14 @@ export async function getPortfolioOverview(userId: string): Promise<ProjectHealt
         where: { status: 'ACTIVE' },
         select: { id: true, name: true, committedPoints: true },
         take: 1
+      },
+      members: {
+        select: {
+          role: true,
+          user: {
+            select: { id: true, username: true, name: true }
+          }
+        }
       }
     },
     orderBy: { updatedAt: 'desc' }
@@ -85,7 +101,13 @@ export async function getPortfolioOverview(userId: string): Promise<ProjectHealt
       doneIssues,
       overdueIssues,
       stuckIssues,
-      activeSprint: project.sprints[0] ?? null
+      activeSprint: project.sprints[0] ?? null,
+      members: project.members.map((m) => ({
+        id: m.user.id,
+        username: m.user.username,
+        name: m.user.name,
+        role: m.role
+      }))
     };
   });
 }

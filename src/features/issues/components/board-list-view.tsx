@@ -238,17 +238,21 @@ function IssueRow({
         {issue.targetDate && <TargetDateChip date={issue.targetDate} status={issue.status} />}
         {issue.assignee ? (
           <span
-            className='bg-muted text-foreground/80 flex size-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold'
-            title={`Assigned to ${issue.assigneeName ?? issue.assignee} (@${issue.assignee})`}
+            className='bg-muted/80 text-foreground/90 inline-flex max-w-[140px] shrink-0 items-center gap-1.5 rounded-full border border-border/80 py-0.5 pr-2.5 pl-1 text-xs font-medium'
+            title={`Assigned to ${issue.assigneeName ? `${issue.assigneeName} (@${issue.assignee})` : `@${issue.assignee}`}`}
           >
-            {initials(issue.assignee, issue.assigneeName)}
+            <span className='bg-background text-foreground/80 flex size-4.5 items-center justify-center rounded-full border text-[9px] font-semibold'>
+              {initials(issue.assignee, issue.assigneeName)}
+            </span>
+            <span className='truncate font-mono text-[11px]'>@{issue.assignee}</span>
           </span>
         ) : (
           <span
-            className='border-border text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed text-[10px]'
+            className='border-border/70 text-muted-foreground/75 inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px]'
             title='Unassigned'
           >
-            ?
+            <span className='size-1.5 rounded-full bg-muted-foreground/40' />
+            Unassigned
           </span>
         )}
         <IssueActionsButton
