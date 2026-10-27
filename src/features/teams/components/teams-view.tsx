@@ -16,21 +16,17 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
-import {
-  createTeamAction,
-  addTeamMemberAction,
-  updateCapacityAction,
-  removeTeamMemberAction
-} from '@/features/teams/actions';
+import { createTeamAction } from '@/features/teams/actions';
 import type { TeamSummary } from '@/features/teams/api/types';
 import { toast } from 'sonner';
 
 interface TeamsViewProps {
   teams: TeamSummary[];
   canManageTeams: boolean;
+  showHeader?: boolean;
 }
 
-export function TeamsView({ teams, canManageTeams }: TeamsViewProps) {
+export function TeamsView({ teams, canManageTeams, showHeader = false }: TeamsViewProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -60,19 +56,30 @@ export function TeamsView({ teams, canManageTeams }: TeamsViewProps) {
 
   return (
     <div className='space-y-6'>
-      <div className='flex items-center justify-between'>
-        <div>
-          <h2 className='text-lg font-semibold'>Engineering Teams</h2>
-          <p className='text-muted-foreground text-sm'>
-            Group engineers into specialized squads, assign team leads, and manage weekly capacity.
-          </p>
+      {showHeader ? (
+        <div className='flex items-center justify-between'>
+          <div>
+            <h2 className='text-lg font-semibold'>Engineering Teams</h2>
+            <p className='text-muted-foreground text-sm'>
+              Group engineers into specialized squads, assign team leads, and manage weekly capacity.
+            </p>
+          </div>
+          {canManageTeams && (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Icons.add className='mr-1.5 size-4' /> New Team
+            </Button>
+          )}
         </div>
-        {canManageTeams && (
-          <Button onClick={() => setCreateOpen(true)}>
-            <Icons.add className='mr-1.5 size-4' /> New Team
-          </Button>
-        )}
-      </div>
+      ) : (
+        canManageTeams &&
+        teams.length > 0 && (
+          <div className='flex justify-end'>
+            <Button onClick={() => setCreateOpen(true)}>
+              <Icons.add className='mr-1.5 size-4' /> New Team
+            </Button>
+          </div>
+        )
+      )}
 
       {teams.length === 0 ? (
         <Card className='border-dashed'>
@@ -82,6 +89,11 @@ export function TeamsView({ teams, canManageTeams }: TeamsViewProps) {
             <p className='text-muted-foreground text-xs'>
               Form your first team to assign team leads and manage sprint capacities.
             </p>
+            {canManageTeams && (
+              <Button className='mt-4' onClick={() => setCreateOpen(true)}>
+                <Icons.add className='mr-1.5 size-4' /> Create Team
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -136,16 +148,22 @@ export function TeamsView({ teams, canManageTeams }: TeamsViewProps) {
           </DialogHeader>
           <div className='space-y-4 py-2'>
             <div className='space-y-1.5'>
-              <label className='text-xs font-medium'>Team Name</label>
+              <label htmlFor='team-name' className='text-xs font-medium'>
+                Team Name
+              </label>
               <Input
+                id='team-name'
                 placeholder='e.g. Core Infrastructure'
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div className='space-y-1.5'>
-              <label className='text-xs font-medium'>Description</label>
+              <label htmlFor='team-description' className='text-xs font-medium'>
+                Description
+              </label>
               <Input
+                id='team-description'
                 placeholder='e.g. Owns API gateway, databases, and deployment pipelines'
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}

@@ -298,7 +298,7 @@ export async function linkRepositoryToNewProject(
 
   const project = await createProjectForUser(userId, {
     name: (projectName?.trim() || suggestProjectName(match.fullName)).slice(0, 80),
-    description: `Tracked from ${match.fullName}`
+    description: undefined
   });
 
   const repository = await getPrisma().repository.upsert({

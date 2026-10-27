@@ -283,7 +283,7 @@ export function ApiClient({ projectId, collections, environments, history }: Api
       if (event.key === 'Enter') {
         event.preventDefault();
         shortcuts.current.send();
-      } else if (event.key.toLowerCase() === 's') {
+      } else if (event.key?.toLowerCase() === 's') {
         event.preventDefault();
         shortcuts.current.save();
       }

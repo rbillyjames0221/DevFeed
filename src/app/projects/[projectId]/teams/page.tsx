@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation';
 import PageContainer from '@/components/layout/page-container';
-import { ProjectWorkTabs } from '@/features/projects/components/project-work-tabs';
 import { TeamsView } from '@/features/teams/components/teams-view';
 import { listTeams } from '@/features/teams/api/service';
 import { listProjectsForUser } from '@/features/projects/service';
@@ -29,10 +28,7 @@ export default async function ProjectTeamsPage({ params }: ProjectTeamsPageProps
       pageTitle='Engineering Teams'
       pageDescription={`Teams, squads, and capacity for ${activeProject.name}.`}
     >
-      <div className='min-w-0 space-y-6'>
-        <ProjectWorkTabs projectId={projectId} active='board' />
-        <TeamsView teams={teams} canManageTeams={canManageTeams} />
-      </div>
+      <TeamsView teams={teams} canManageTeams={canManageTeams} />
     </PageContainer>
   );
 }

@@ -84,8 +84,15 @@ export function createGitHubProvider(fetcher: typeof fetch = fetch): GitProvider
     },
 
     async getRepositories(token) {
-      const payload = await read('/user/repos?per_page=100&sort=updated', token);
-      return z.array(z.unknown()).parse(payload).map(normalizeGitHubRepository);
+      const allRepos: unknown[] = [];
+      for (let page = 1; page <= 5; page++) {
+        const payload = await read(`/user/repos?per_page=100&sort=updated&page=${page}`, token);
+        const repos = z.array(z.unknown()).parse(payload);
+        allRepos.push(...repos);
+        if (repos.length < 100) break;
+      }
+      return allRepos.map(normalizeGitHubRepository);
+
     },
 
     async getBranches(token, repositoryId) {

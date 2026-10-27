@@ -58,6 +58,7 @@ export function LinkNewProjectForm({ repositories }: { repositories: LinkableRep
         </CardHeader>
         <CardContent>
           <Button
+            nativeButton={false}
             render={<Link href={`/projects/${joinedProjectId}/git`} aria-label='Go to project' />}
           >
             Go to project

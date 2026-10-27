@@ -24,6 +24,11 @@ const createTeamSchema = z.object({
   leadId: z.string().optional()
 });
 
+function revalidateTeams() {
+  revalidatePath('/teams');
+  revalidatePath('/projects', 'layout');
+}
+
 export async function createTeamAction(input: unknown): Promise<ActionResult> {
   const user = await requireUser();
   const parsed = createTeamSchema.safeParse(input);
@@ -33,7 +38,7 @@ export async function createTeamAction(input: unknown): Promise<ActionResult> {
 
   try {
     const result = await createTeam(user.id, parsed.data);
-    revalidatePath('/teams');
+    revalidateTeams();
     return { ok: true, id: result.id };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Could not create team' };
@@ -60,7 +65,7 @@ export async function updateCapacityAction(input: unknown): Promise<ActionResult
       parsed.data.memberUserId,
       parsed.data.weeklyCapacity
     );
-    revalidatePath('/teams');
+    revalidateTeams();
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Could not update capacity' };
@@ -87,7 +92,7 @@ export async function addTeamMemberAction(input: unknown): Promise<ActionResult>
       parsed.data.memberUserId,
       parsed.data.weeklyCapacity
     );
-    revalidatePath('/teams');
+    revalidateTeams();
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Could not add member' };
@@ -108,7 +113,7 @@ export async function removeTeamMemberAction(input: unknown): Promise<ActionResu
 
   try {
     await removeTeamMember(user.id, parsed.data.teamId, parsed.data.memberUserId);
-    revalidatePath('/teams');
+    revalidateTeams();
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Could not remove member' };
@@ -129,7 +134,7 @@ export async function linkTeamToProjectAction(input: unknown): Promise<ActionRes
 
   try {
     await linkTeamToProject(user.id, parsed.data.teamId, parsed.data.projectId);
-    revalidatePath('/teams');
+    revalidateTeams();
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Could not link project' };

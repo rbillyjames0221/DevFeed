@@ -95,10 +95,10 @@ export function RepositoryPicker({
                 return (
                   <CommandItem
                     key={optionValue}
-                    value={optionValue}
-                    keywords={[repository.fullName]}
+                    value={repository.fullName}
+
                     onSelect={(next) => {
-                      onChange(next);
+                      onChange(optionValue);
                       setOpen(false);
                     }}
                   >

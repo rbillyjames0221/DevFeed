@@ -166,6 +166,7 @@ export const Icons = {
   code: IconCode,
   dots: IconDots,
   ellipsis: IconDotsVertical,
+  dotsVertical: IconDotsVertical,
   externalLink: IconExternalLink,
   help: IconHelpCircle,
   info: IconInfoCircle,
