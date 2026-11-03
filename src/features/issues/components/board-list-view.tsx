@@ -17,7 +17,15 @@ import {
 } from '@/features/issues/components/board-card';
 import type { BoardIssue } from '@/features/issues/components/issue-board';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import {
+  extractAttachments,
+  formatPdfDisplayName
+} from '@/features/issues/attachments';
+import {
+  ImagePreviewDialog,
+  PdfPreviewDialog
+} from '@/features/issues/components/attachment-preview-dialogs';
 
 export interface ListSection {
   /** Column id, or 'BACKLOG'. */
@@ -189,6 +197,13 @@ function IssueRow({
   onDelete
 }: IssueRowProps) {
   const others = statuses.filter((status) => status !== issue.status);
+  const { images, pdfs } = useMemo(
+    () => extractAttachments(issue.description),
+    [issue.description]
+  );
+  const [previewImageOpen, setPreviewImageOpen] = useState(false);
+  const [previewPdfOpen, setPreviewPdfOpen] = useState(false);
+
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -255,6 +270,41 @@ function IssueRow({
             Unassigned
           </span>
         )}
+        {pdfs.length > 0 && (
+          <button
+            type='button'
+            onClick={(event) => {
+              event.stopPropagation();
+              setPreviewPdfOpen(true);
+            }}
+            className='inline-flex h-5.5 shrink-0 items-center gap-1 rounded border border-red-500/30 bg-red-500/10 px-2 text-[10px] font-medium text-red-600 hover:bg-red-500/20 dark:text-red-400 transition-colors cursor-pointer shadow-2xs'
+            title={`PDF: ${pdfs.map((p) => p.name).join(', ')} (click to preview)`}
+          >
+            <Icons.fileTypePdf className='size-3 shrink-0 text-red-500' aria-hidden='true' />
+            <span>Preview</span>
+            {pdfs.length > 1 && (
+              <span className='shrink-0 rounded bg-red-500/20 px-1 text-[9px] font-bold'>
+                +{pdfs.length - 1}
+              </span>
+            )}
+          </button>
+        )}
+
+        {images.length > 0 && (
+          <button
+            type='button'
+            onClick={(event) => {
+              event.stopPropagation();
+              setPreviewImageOpen(true);
+            }}
+            className='inline-flex h-5.5 shrink-0 items-center gap-1 rounded border border-sky-500/30 bg-sky-500/10 px-1.5 text-[10px] font-medium text-sky-700 hover:bg-sky-500/20 dark:text-sky-300 transition-colors cursor-pointer'
+            title={`Preview ${images.length} attached image${images.length > 1 ? 's' : ''}`}
+          >
+            <Icons.media className='size-3 shrink-0' aria-hidden='true' />
+            <span>Preview</span>
+          </button>
+        )}
+
         <IssueActionsButton
           issue={issue}
           others={others}
@@ -269,6 +319,16 @@ function IssueRow({
         onOpen={onOpen}
         onMove={onMove}
         onDelete={onDelete}
+      />
+      <ImagePreviewDialog
+        images={images}
+        open={previewImageOpen}
+        onOpenChange={setPreviewImageOpen}
+      />
+      <PdfPreviewDialog
+        pdfs={pdfs}
+        open={previewPdfOpen}
+        onOpenChange={setPreviewPdfOpen}
       />
     </ContextMenu>
   );

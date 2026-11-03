@@ -96,7 +96,7 @@ const createIssueSchema = z.object({
   projectId: z.string().min(1),
   boardId: z.string().min(1).optional(),
   title: z.string().trim().min(3, 'Title must be at least 3 characters').max(200),
-  description: z.string().trim().max(10_000).optional(),
+  description: z.string().trim().max(500_000).optional(),
   type: z.string().min(1).default('TASK'),
   status: z.string().min(1).default('BACKLOG'),
   priority: z.string().min(1).default('MEDIUM'),
@@ -455,7 +455,7 @@ export async function deleteIssueFieldOptionAction(input: unknown): Promise<Issu
 const updateSchema = z.object({
   issueId: z.string().min(1),
   title: z.string().trim().min(3).max(200).optional(),
-  description: z.string().trim().max(10_000).optional(),
+  description: z.string().trim().max(500_000).optional(),
   type: z.string().min(1).optional(),
   status: z.string().min(1).optional(),
   priority: z.string().min(1).optional(),

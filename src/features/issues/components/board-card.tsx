@@ -28,7 +28,15 @@ import {
   type StatusIconName
 } from '@/features/issues/status-icons';
 import { cn } from '@/lib/utils';
-import { createContext, useContext } from 'react';
+import {
+  extractAttachments,
+  formatPdfDisplayName
+} from '@/features/issues/attachments';
+import {
+  ImagePreviewDialog,
+  PdfPreviewDialog
+} from '@/features/issues/components/attachment-preview-dialogs';
+import { createContext, useContext, useMemo, useState } from 'react';
 
 /** Column names that mean the work is finished, so a past date isn't "overdue". */
 export const DONE_STAGE = /^(done|closed|complete|completed|resolved|shipped|released)$/i;
@@ -235,6 +243,12 @@ export function IssueCard({
   onDelete
 }: IssueCardProps) {
   const others = statuses.filter((status) => status !== issue.status);
+  const { images, pdfs } = useMemo(
+    () => extractAttachments(issue.description),
+    [issue.description]
+  );
+  const [previewImageOpen, setPreviewImageOpen] = useState(false);
+  const [previewPdfOpen, setPreviewPdfOpen] = useState(false);
 
   return (
     <ContextMenu>
@@ -293,34 +307,78 @@ export function IssueCard({
           {issue.sprint && <DotBadge>{issue.sprint}</DotBadge>}
         </div>
 
-        <div className='flex flex-wrap items-center gap-1.5 pr-6'>
-          <PriorityChip name={issue.priority} color={priorityColor} />
-          {issue.targetDate && <TargetDateChip date={issue.targetDate} status={issue.status} />}
-          {issue.gitLinkCount > 0 && (
-            <span
-              className={CHIP}
-              title={`${issue.gitLinkCount} linked branches or merge requests`}
-            >
-              <Icons.gitBranch className='size-3' aria-hidden='true' />
-              {issue.gitLinkCount}
-            </span>
-          )}
-          {(issue.commentCount ?? 0) > 0 && (
-            <span className={CHIP} title={`${issue.commentCount} comments`}>
-              <Icons.comment className='size-3' aria-hidden='true' />
-              {issue.commentCount}
-            </span>
-          )}
-        </div>
+        {/* Chips row and Lower-right Preview buttons */}
+        <div className='flex flex-wrap items-center justify-between gap-y-1.5 gap-x-2 pt-0.5'>
+          <div className='flex flex-wrap items-center gap-1.5 min-w-0 pr-1'>
+            <PriorityChip name={issue.priority} color={priorityColor} />
+            {issue.targetDate && <TargetDateChip date={issue.targetDate} status={issue.status} />}
+            {issue.gitLinkCount > 0 && (
+              <span
+                className={CHIP}
+                title={`${issue.gitLinkCount} linked branches or merge requests`}
+              >
+                <Icons.gitBranch className='size-3' aria-hidden='true' />
+                {issue.gitLinkCount}
+              </span>
+            )}
+            {(issue.commentCount ?? 0) > 0 && (
+              <span className={CHIP} title={`${issue.commentCount} comments`}>
+                <Icons.comment className='size-3' aria-hidden='true' />
+                {issue.commentCount}
+              </span>
+            )}
+          </div>
 
-        <IssueActionsButton
-          issue={issue}
-          others={others}
-          onOpen={onOpen}
-          onMove={onMove}
-          onDelete={onDelete}
-          className='absolute right-1.5 bottom-1.5'
-        />
+          <div className='flex items-center gap-1.5 shrink-0 ml-auto'>
+            {pdfs.length > 0 && (
+              <button
+                type='button'
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPreviewPdfOpen(true);
+                }}
+                className='inline-flex h-5.5 items-center gap-1 rounded border border-red-500/30 bg-red-500/10 px-2 text-[10px] font-medium text-red-600 hover:bg-red-500/20 dark:text-red-400 transition-colors cursor-pointer shadow-2xs'
+                title={`PDF: ${pdfs.map((p) => p.name).join(', ')} (click to preview)`}
+              >
+                <Icons.fileTypePdf className='size-3 shrink-0 text-red-500' aria-hidden='true' />
+                <span>Preview</span>
+                {pdfs.length > 1 && (
+                  <span className='shrink-0 rounded bg-red-500/20 px-1 text-[9px] font-bold'>
+                    +{pdfs.length - 1}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {images.length > 0 && (
+              <button
+                type='button'
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPreviewImageOpen(true);
+                }}
+                className='inline-flex h-5.5 items-center gap-1 rounded border border-sky-500/30 bg-sky-500/10 px-2 text-[10px] font-medium text-sky-700 hover:bg-sky-500/20 dark:text-sky-300 transition-colors cursor-pointer shadow-2xs'
+                title={`Images: ${images.map((img) => img.name).join(', ')} (click to preview)`}
+              >
+                <Icons.media className='size-3 shrink-0' aria-hidden='true' />
+                <span>Preview</span>
+                {images.length > 1 && (
+                  <span className='shrink-0 rounded bg-sky-500/20 px-1 text-[9px] font-bold'>
+                    +{images.length - 1}
+                  </span>
+                )}
+              </button>
+            )}
+
+            <IssueActionsButton
+              issue={issue}
+              others={others}
+              onOpen={onOpen}
+              onMove={onMove}
+              onDelete={onDelete}
+            />
+          </div>
+        </div>
       </ContextMenuTrigger>
 
       <IssueContextMenuContent
@@ -328,6 +386,18 @@ export function IssueCard({
         onOpen={onOpen}
         onMove={onMove}
         onDelete={onDelete}
+      />
+
+      <ImagePreviewDialog
+        images={images}
+        open={previewImageOpen}
+        onOpenChange={setPreviewImageOpen}
+      />
+
+      <PdfPreviewDialog
+        pdfs={pdfs}
+        open={previewPdfOpen}
+        onOpenChange={setPreviewPdfOpen}
       />
     </ContextMenu>
   );

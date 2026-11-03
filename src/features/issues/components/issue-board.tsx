@@ -24,6 +24,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RichMarkdownEditor } from '@/components/rich-markdown-editor';
+import { IssueAttachmentsPreview } from '@/features/issues/components/issue-attachments-preview';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { addDays, format, parseISO } from 'date-fns';
@@ -2056,6 +2057,12 @@ function IssueModal({
               />
             </div>
 
+            <IssueAttachmentsPreview
+              markdown={description}
+              onChange={setDescription}
+              disabled={disabled}
+            />
+
             <div className='space-y-2'>
               <Label>Linked docs</Label>
               <div className='flex flex-wrap items-center gap-2'>
@@ -2478,6 +2485,12 @@ function CreateIssueModal({
                   readOnly={pending || disabled}
                 />
               </div>
+
+              <IssueAttachmentsPreview
+                markdown={description}
+                onChange={setDescription}
+                disabled={pending || disabled}
+              />
 
               <div className='space-y-2'>
                 <Label>Linked docs</Label>
